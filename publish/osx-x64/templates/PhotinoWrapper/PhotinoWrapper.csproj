@@ -15,6 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="runtime/**/*.cs" />
     <Content Include="icons/**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
     <Content Include="launch-settings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
     <Content Include="runtime/**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />

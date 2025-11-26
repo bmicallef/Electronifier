@@ -54,7 +54,10 @@ public sealed class ReleaseAutomationService
         Converters = { new JsonStringEnumConverter() }
     };
 
-    private static readonly HttpClient Http = new();
+    private static readonly HttpClient Http = new()
+    {
+        Timeout = TimeSpan.FromMinutes(30)
+    };
     private readonly string _templateRoot = LocateTemplateRoot();
 
     public async Task<ReleaseAutomationResult> PublishAsync(ProjectDefinition project, ProjectRelease release, LaunchOptions launchOptions, IProgress<ReleaseAutomationProgress>? progress = null, CancellationToken cancellationToken = default)

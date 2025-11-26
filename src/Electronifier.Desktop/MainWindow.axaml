@@ -372,6 +372,11 @@
                                                     <TextBlock Text="Access token" FontWeight="SemiBold" />
                                                     <TextBox Text="{Binding GitHubAccessToken}" Watermark="Personal access token" />
                                                 </StackPanel>
+                                                <Button Classes="cancel-action"
+                                                        Content="REMOVE"
+                                                        HorizontalAlignment="Left"
+                                                        Command="{Binding DataContext.RemovePublicationTargetCommand, ElementName=Root}"
+                                                        CommandParameter="{Binding}" />
                                             </StackPanel>
                                         </Border>
                                     </DataTemplate>

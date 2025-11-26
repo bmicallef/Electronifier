@@ -27,6 +27,18 @@ internal sealed class ServerProcessManager : IDisposable
         return string.IsNullOrWhiteSpace(configured) ? null : configured;
     }
 
+    public void WaitForExit()
+    {
+        try
+        {
+            _process?.WaitForExit();
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
     public bool TryStart(out string message)
     {
         if (!Directory.Exists(_runtimeRoot))

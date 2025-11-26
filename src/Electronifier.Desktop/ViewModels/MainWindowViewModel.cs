@@ -29,6 +29,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private readonly DependencyInstaller _dependencyInstaller = new();
     private readonly RelayCommand _saveCommand;
     private readonly RelayCommand _addPublicationTargetCommand;
+    private readonly RelayCommand _removePublicationTargetCommand;
     private readonly RelayCommand _refreshDependenciesCommand;
     private readonly RelayCommand _createReleaseCommand;
     private readonly RelayCommand _createProjectCommand;
@@ -76,6 +77,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         _cancelProjectFormCommand = new RelayCommand(_ => CancelProjectForm());
         _saveCommand = new RelayCommand(_ => _ = SaveStateAsync(), _ => Projects.Any());
         _addPublicationTargetCommand = new RelayCommand(_ => AddPublicationTarget(), _ => GetActiveProject() is not null);
+        _removePublicationTargetCommand = new RelayCommand(obj => RemovePublicationTarget(obj as PublicationDestinationViewModel), _ => GetActiveProject() is not null);
         _refreshDependenciesCommand = new RelayCommand(_ => _ = RefreshDependenciesAsync(), _ => !IsCheckingDependencies);
         _createReleaseCommand = new RelayCommand(_ => CreateRelease(), _ => CanCreateRelease());
 
@@ -101,6 +103,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     public ICommand AddReleaseCommand => _addReleaseCommand;
     public ICommand SaveNewProjectCommand => _saveNewProjectCommand;
     public ICommand CancelProjectFormCommand => _cancelProjectFormCommand;
+    public ICommand RemovePublicationTargetCommand => _removePublicationTargetCommand;
 
         public ProjectDefinitionViewModel? SelectedProject
         {
@@ -720,6 +723,13 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         var project = GetActiveProject();
         project?.AddPublicationTarget();
+    }
+
+    private void RemovePublicationTarget(PublicationDestinationViewModel? target)
+    {
+        var project = GetActiveProject();
+        project?.RemovePublicationTarget(target);
+        MarkProjectDirty();
     }
 
     private void MarkProjectDirty()

@@ -29,6 +29,23 @@ internal static class Program
             using var serverManager = new ServerProcessManager(appRoot, launch, LogSink.Append);
             var backendStarted = serverManager.TryStart(out var backendMessage);
 
+            var entryUrl = serverManager.GetEntryUrl();
+            if (string.IsNullOrWhiteSpace(entryUrl))
+            {
+                LogSink.Append("No entry URL configured; assuming execution script provides its own UI. Not loading Photino host content.");
+                if (!backendStarted && !string.IsNullOrWhiteSpace(backendMessage))
+                {
+                    LogSink.Append($"Backend failed to start: {backendMessage}");
+                }
+
+                if (backendStarted)
+                {
+                    serverManager.WaitForExit();
+                }
+
+                return 0;
+            }
+
             var window = BuildWindow(appRoot, launch);
             window.RegisterWebMessageReceivedHandler((sender, message) =>
             {
@@ -36,18 +53,8 @@ internal static class Program
                 target?.SendWebMessage($"Received message: {message}");
             });
 
-            var entryUrl = serverManager.GetEntryUrl();
-            if (!string.IsNullOrWhiteSpace(entryUrl))
-            {
-                LogSink.Append($"Loading entry URL: {entryUrl}");
-                window.Load(entryUrl);
-            }
-            else
-            {
-                LogSink.Append("No entry URL configured; showing fallback HTML.");
-                window.LoadRawString(BuildFallbackHtml(launch, backendStarted, backendMessage));
-            }
-
+            LogSink.Append($"Loading entry URL: {entryUrl}");
+            window.Load(entryUrl);
             window.WaitForClose();
             return 0;
         }

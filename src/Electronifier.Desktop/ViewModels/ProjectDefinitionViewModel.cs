@@ -376,6 +376,21 @@ public sealed class ProjectDefinitionViewModel : ViewModelBase
         set => SetProperty(ref _selectedPublicationTarget, value);
     }
 
+    public void RemovePublicationTarget(PublicationDestinationViewModel? target)
+    {
+        if (target is null)
+        {
+            return;
+        }
+
+        PublicationTargets.Remove(target);
+        _model.PublicationSettings.PublicationTargets.Remove(target.Model);
+        if (SelectedPublicationTarget == target)
+        {
+            SelectedPublicationTarget = PublicationTargets.FirstOrDefault();
+        }
+    }
+
     public void AddPublicationTarget()
     {
         var destination = new PublicationDestination();

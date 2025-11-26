@@ -1,0 +1,55 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:Electronifier.Desktop.ViewModels"
+        mc:Ignorable="d"
+        x:Class="Electronifier.Desktop.CompileGuidanceWindow"
+        Title="How to compile your application"
+        Width="520"
+        Height="360"
+        CanResize="False"
+        Padding="16"
+        x:DataType="vm:CompileGuidanceViewModel">
+    <StackPanel Spacing="12">
+        <TextBlock FontSize="18"
+                   FontWeight="SemiBold"
+                   Text="Select your target operating system and copy the dotnet publish command." />
+        <TextBlock Text="Target operating system" />
+        <ComboBox ItemsSource="{Binding Targets}"
+                  SelectedItem="{Binding SelectedTarget}">
+            <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:CompileTargetInfo">
+                    <TextBlock Text="{Binding Name}" />
+                </DataTemplate>
+            </ComboBox.ItemTemplate>
+        </ComboBox>
+        <TextBlock Text="Publish command" />
+        <Border Background="{DynamicResource CardBrush}"
+                CornerRadius="8"
+                BorderBrush="{DynamicResource BorderBrushColor}"
+                BorderThickness="1">
+            <TextBox Text="{Binding SelectedSnippet}"
+                     IsReadOnly="True"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     FontFamily="Consolas"
+                     FontSize="13"
+                     Padding="8"
+                     MinHeight="120"
+                     Background="Transparent"
+                     BorderThickness="0" />
+        </Border>
+        <TextBlock Text="{Binding CopyStatusMessage}"
+                   Foreground="{DynamicResource TextSecondaryBrush}"
+                   FontSize="12" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="Copy snippet"
+                    FontWeight="SemiBold"
+                    Click="OnCopySnippet" />
+            <Button Classes="cancel-action"
+                    Content="Close"
+                    Click="OnCloseGuidanceWindow" />
+        </StackPanel>
+    </StackPanel>
+</Window>

@@ -1,0 +1,5 @@
+#!/bin/bash
+DIR="$(cd "$(dirname "$0")" && pwd)"
+export DOTNET_ROOT="$DIR"
+cd "$DIR"
+exec "$DIR/./createdump" "$@"

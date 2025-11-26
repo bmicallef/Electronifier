@@ -1,0 +1,37 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Electronifier.Desktop"
+        x:Class="Electronifier.Desktop.AboutWindow"
+        x:DataType="local:AboutWindow"
+        Title="About Electronifier"
+        Width="420" Height="420"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Icon="avares://Electronifier.Desktop/assets/electronifier_logo.png">
+    <Border Padding="24" CornerRadius="16">
+        <StackPanel Spacing="12" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Image Source="avares://Electronifier.Desktop/assets/electronifier_logo.png"
+                   Width="140" Height="140" Stretch="Uniform" />
+            <TextBlock Text="ELECTRONIFIER" FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center" />
+            <TextBlock Text="{Binding VersionLabel}"
+                       FontSize="16"
+                       HorizontalAlignment="Center"
+                       Foreground="#6B7280" />
+            <TextBlock Text="This product is provided&#x0a;by KnowledgeLocker, LLC."
+                       TextWrapping="Wrap"
+                       TextAlignment="Center"
+                       MaxWidth="320"
+                       Foreground="White" />
+            <Button Content="Email us for support"
+                    Click="OnEmailSupport"
+                    HorizontalAlignment="Center"
+                    Margin="0,8,0,0"
+                    MinWidth="200" />
+            <TextBlock Text="© since 2025 KnowledgeLocker, LLC"
+                       FontSize="12"
+                       Foreground="#6B7280"
+                       HorizontalAlignment="Center"
+                       Margin="0,12,0,0" />
+        </StackPanel>
+    </Border>
+</Window>

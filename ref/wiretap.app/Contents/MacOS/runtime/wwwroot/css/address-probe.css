@@ -1,0 +1,8 @@
+.probe-row-hidden > td {
+    visibility: hidden;
+    height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-top: none !important;
+    border-bottom: none !important;
+}

@@ -1,0 +1,435 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vms="clr-namespace:Electronifier.Desktop.ViewModels"
+        xmlns:converters="clr-namespace:Electronifier.Desktop.Converters"
+        mc:Ignorable="d"
+        x:Class="Electronifier.Desktop.MainWindow"
+        x:Name="Root"
+        x:DataType="vms:MainWindowViewModel"
+        d:DesignWidth="1200" d:DesignHeight="720"
+        Width="1200"
+        Height="830"
+        Title="Electronifier"
+        Icon="avares://Electronifier.Desktop/assets/electronifier_logo.png"
+        Padding="16">
+    <DockPanel>
+        <DockPanel.Resources>
+            <converters:BooleanToDevtoolsLabelConverter x:Key="DevtoolsLabelConverter" />
+        </DockPanel.Resources>
+        <Grid RowDefinitions="*" ColumnDefinitions="*">
+        <!-- Splash Screen -->
+        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="16" Padding="24" IsVisible="{Binding IsSplash}">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="20">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="16">
+                    <Image Source="avares://Electronifier.Desktop/assets/electronifier_logo.png"
+                           Width="56"
+                           Height="56"
+                           Stretch="Uniform" />
+                    <TextBlock Text="Electronifier" Foreground="White" FontSize="40" FontWeight="Bold" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock Text="THE EASIEST WAY TO PACKAGE YOUR SELF-CONTAINED .NET WEB APPLICATIONS!"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           FontSize="14"
+                           FontWeight="SemiBold"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           MaxWidth="420" />
+                <TextBlock Text="Building Photino-native shells for your .NET services..."
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           FontSize="16"
+                           HorizontalAlignment="Center" />
+                <ProgressBar IsVisible="True"
+                             Width="420"
+                             Height="4"
+                             Background="{DynamicResource BorderBrushColor}"
+                             Foreground="{DynamicResource PrimaryBrush}" />
+            </StackPanel>
+        </Border>
+
+        <!-- Dependency stage -->
+        <Border Background="{DynamicResource CardBrush}" CornerRadius="16" Padding="24" IsVisible="{Binding IsDependencyStage}">
+            <StackPanel Spacing="16">
+                <TextBlock Text="Checking dependencies" FontSize="24" FontWeight="SemiBold" />
+                <TextBlock Text="Dotnet SDK (for Photino publish + packaging)"
+                           FontSize="14"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                <ItemsControl ItemsSource="{Binding DependencyStatuses}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vms:DependencyRequirementStatusViewModel">
+                            <Border BorderBrush="{DynamicResource BorderBrushColor}" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,4">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Status}" FontSize="12" FontWeight="Bold" Foreground="{Binding ForegroundColor}" />
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Details}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBlock Text="{Binding InstallHint}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource PrimaryBrush}" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="{Binding DependencyInstruction}"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource PrimaryBrush}"
+                           FontSize="12" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Spacing="12">
+                    <Button Classes="install-action"
+                            Content="INSTALL MISSING DEPENDENCIES NOW"
+                            Command="{Binding RefreshDependenciesCommand}"
+                            IsVisible="{Binding HasMissingDependencies}" />
+                    <Button Content="REFRESH STATUS"
+                            Command="{Binding RefreshDependenciesCommand}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding RequiresAdminPassword}">
+                    <TextBox Width="220" Watermark="Admin password" PasswordChar="●" Text="{Binding AdminPassword, Mode=TwoWay}" />
+                    <Button Classes="install-action"
+                            Content="RETRY INSTALL"
+                            Command="{Binding RefreshDependenciesCommand}" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Projects stage -->
+        <Border Background="{DynamicResource CardBrush}" CornerRadius="16" Padding="24" IsVisible="{Binding IsProjectsStage}">
+        <StackPanel Spacing="16">
+            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                <TextBlock Text="Projects" FontSize="28" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <Button Grid.Column="1"
+                        Classes="create-action"
+                        Content="CREATE PROJECT"
+                        Command="{Binding CreateProjectCommand}"
+                        HorizontalAlignment="Right" />
+            </Grid>
+            <TextBlock Foreground="{DynamicResource PrimaryBrush}"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       Margin="0,0,0,8"
+                       Cursor="Hand"
+                       TextDecorations="Underline"
+                       PointerPressed="OnShowCompileGuidance">
+                How to compile your application.
+            </TextBlock>
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Projects}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vms:ProjectDefinitionViewModel">
+                                <Border BorderBrush="{DynamicResource BorderBrushColor}" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,6">
+                                    <Grid ColumnDefinitions="Auto,2*,2*,Auto"
+                                          ColumnSpacing="12"
+                                          VerticalAlignment="Center">
+                                        <Image Grid.Column="0"
+                                               Width="48"
+                                               Height="48"
+                                               Margin="0,0,12,0"
+                                               Stretch="Uniform"
+                                               Source="{Binding IconImage}" />
+                                        <StackPanel Grid.Column="1" Spacing="4">
+                                            <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding LatestReleaseSummary}"
+                                                       FontSize="12"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2"
+                                                    Spacing="4"
+                                                    HorizontalAlignment="Stretch"
+                                                    IsVisible="{Binding IsReleaseTarget}">
+                                            <TextBlock Text="{Binding DataContext.ReleaseProgressLabel, ElementName=Root}"
+                                                       FontSize="12"
+                                                       FontWeight="SemiBold" />
+                                            <TextBox Text="{Binding DataContext.ReleaseStatusMessage, ElementName=Root}"
+                                                     FontSize="12"
+                                                     Foreground="{DynamicResource TextSecondaryBrush}"
+                                                     Background="Transparent"
+                                                     BorderThickness="0"
+                                                     IsReadOnly="True"
+                                                     TextWrapping="Wrap"
+                                                     AcceptsReturn="True"
+                                                     Padding="0"
+                                                     Cursor="IBeam" />
+                                            <ProgressBar Value="{Binding DataContext.ReleaseProgress, ElementName=Root}"
+                                                         Minimum="0"
+                                                         Maximum="1"
+                                                         Height="6"
+                                                         Background="{DynamicResource BorderBrushColor}"
+                                                         Foreground="{DynamicResource PrimaryBrush}" />
+                                            <Border IsVisible="{Binding DataContext.ReleaseSucceeded, ElementName=Root}"
+                                                    Margin="0,8,0,0"
+                                                    CornerRadius="6"
+                                                    Background="{DynamicResource SuccessBrush}"
+                                                    Padding="6,2"
+                                                    HorizontalAlignment="Left">
+                                                <TextBlock Text="Release succeeded"
+                                                           Foreground="White"
+                                                           FontSize="12"
+                                                           FontWeight="SemiBold" />
+                                            </Border>
+                                        </StackPanel>
+                                            <StackPanel Grid.Column="3"
+                                                        Spacing="6"
+                                                        HorizontalAlignment="Right">
+                                                <StackPanel Orientation="Horizontal"
+                                                            HorizontalAlignment="Right"
+                                                            Spacing="8">
+                                                    <Button Content="EDIT"
+                                                            Command="{Binding DataContext.EditProjectCommand, ElementName=Root}"
+                                                            CommandParameter="{Binding}" />
+                                                    <Button Classes="publish-action"
+                                                            Content="PUBLISH"
+                                                            Command="{Binding DataContext.AddReleaseCommand, ElementName=Root}"
+                                                            CommandParameter="{Binding}" />
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal"
+                                                            HorizontalAlignment="Right"
+                                                            Spacing="6"
+                                                            Margin="0,4,0,0">
+                                                    <Path Width="16" Height="16" Stretch="Uniform"
+                                                          Fill="White"
+                                                          IsVisible="{Binding HasAnyMacBinPath}"
+                                                          Data="M11.318 1.499a2.5 2.5 0 0 0-1.236.7 2.5 2.5 0 0 0-.714 1.86 2.5 2.5 0 0 0 1.547-.76 2.5 2.5 0 0 0 .65-1.8 2.5 2.5 0 0 0-.247-.999ZM13.793 4.48c-1.206-.076-2.234.677-2.789.677-.55 0-1.392-.65-2.3-.632-1.182.017-2.277.695-2.883 1.767-1.232 2.137-.313 5.301.872 7.037.576.839 1.262 1.78 2.172 1.748.873-.035 1.203-.563 2.285-.563 1.07 0 1.375.563 2.282.549.94-.016 1.53-.852 2.102-1.708.651-.954.925-1.875.934-1.92-.02-.01-1.856-.71-1.876-2.827-.016-1.764 1.45-2.607 1.516-2.643-.834-1.225-2.15-1.37-2.52-1.399Z" />
+                                                    <Path Width="16" Height="16" Stretch="Uniform"
+                                                          Fill="White"
+                                                          IsVisible="{Binding HasLinuxBinPath}"
+                                                          Data="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Zm0 2.4a1 1 0 1 1 0 2.2 1 1 0 0 1 0-2.2ZM4 9.6a1 1 0 1 1 0-2.2 1 1 0 0 1 0 2.2Zm8 0a1 1 0 1 1 0-2.2 1 1 0 0 1 0 2.2Zm-6.4 3.2a1 1 0 1 1 2 0 1 1 0 0 1-2 0Zm2.5-6.5A3 3 0 0 1 11 8a3 3 0 0 1-.9 2.13l-.7-.71A2 2 0 0 0 10 8a2 2 0 0 0-2-2c-.3 0-.6.07-.85.18l-.75-.88A3 3 0 0 1 8.1 6.3Z" />
+                                                    <Path Width="16" Height="16" Stretch="Uniform"
+                                                          Fill="White"
+                                                          IsVisible="{Binding HasAnyWindowsBinPath}"
+                                                          Data="M6.555 3.46v4.69l-6.555-.47V2.99l6.555-.75Zm.845-.95 8.6-1.37v6.77l-8.6-.66V2.51Zm-7.4 5.9 6.555.45v4.69l-6.555-.94V7.46Zm7.4.51 8.6.6v6.77l-8.6-1.36V7.97Z" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+        </StackPanel>
+        </Border>
+
+        <!-- New project form -->
+        <Border Background="{DynamicResource CardBrush}" CornerRadius="16" Padding="24" IsVisible="{Binding IsNewProjectStage}">
+            <Grid ColumnDefinitions="7*,3*" RowDefinitions="Auto,*,Auto" ColumnSpacing="20" Grid.IsSharedSizeScope="True">
+                <TextBlock Grid.ColumnSpan="2" Text="Project" FontSize="24" FontWeight="SemiBold" />
+
+                <StackPanel Grid.Column="0" Grid.Row="1" Spacing="8" DataContext="{Binding NewProjectDraft}">
+                    <TextBox Text="{Binding Name}" Watermark="Project name" />
+                    <TextBox Text="{Binding Version}" Watermark="Version" />
+                    <TextBox Text="{Binding Description}" Watermark="Description" AcceptsReturn="True" TextWrapping="Wrap" Height="80" />
+                    <Grid ColumnDefinitions="1*,1*,1*" ColumnSpacing="8" Margin="0,24 0 0">
+                        <TextBox Grid.Column="0" Text="{Binding Namespace}" Watermark="Namespace" />
+                        <TextBox Grid.Column="1" Text="{Binding Organization}" Watermark="Organization" />
+                        <TextBox Grid.Column="2" Text="{Binding Author}" Watermark="Author" />
+                    </Grid>
+                    <StackPanel Spacing="8" Margin="0,4" HorizontalAlignment="Stretch" Grid.IsSharedSizeScope="True">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <TextBox Grid.Column="0" Text="{Binding IconPath}" Watermark="Icon (PNG/SVG) path" HorizontalAlignment="Stretch" />
+                            <Button Grid.Column="1"
+                                    Classes="browse-action"
+                                    Content="BROWSE ICON FILE"
+                                    Click="OnBrowseIconFile"
+                                    VerticalAlignment="Center" />
+                        </Grid>
+                        <StackPanel Spacing="8" HorizontalAlignment="Stretch">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="BinBrowseColumn" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" Text="{Binding MacBinPath}" Watermark="macOS bin/release path" HorizontalAlignment="Stretch" />
+                                <Button Grid.Column="1"
+                                        Classes="browse-action"
+                                        Click="OnBrowseMacBinPath"
+                                        Width="260"
+                                        VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <Path Width="14" Height="14" Stretch="Uniform"
+                                              Fill="White"
+                                              Data="M11.318 1.499a2.5 2.5 0 0 0-1.236.7 2.5 2.5 0 0 0-.714 1.86 2.5 2.5 0 0 0 1.547-.76 2.5 2.5 0 0 0 .65-1.8 2.5 2.5 0 0 0-.247-.999ZM13.793 4.48c-1.206-.076-2.234.677-2.789.677-.55 0-1.392-.65-2.3-.632-1.182.017-2.277.695-2.883 1.767-1.232 2.137-.313 5.301.872 7.037.576.839 1.262 1.78 2.172 1.748.873-.035 1.203-.563 2.285-.563 1.07 0 1.375.563 2.282.549.94-.016 1.53-.852 2.102-1.708.651-.954.925-1.875.934-1.92-.02-.01-1.856-.71-1.876-2.827-.016-1.764 1.45-2.607 1.516-2.643-.834-1.225-2.15-1.37-2.52-1.399Z" />
+                                        <TextBlock Text="arm64" VerticalAlignment="Center" />
+                                        <TextBlock Text="BROWSE BIN FOLDER" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="BinBrowseColumn" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" Text="{Binding MacBinPathX86}" Watermark="macOS bin/release path (Intel)" HorizontalAlignment="Stretch" />
+                                <Button Grid.Column="1"
+                                        Classes="browse-action"
+                                        Click="OnBrowseMacBinPathX86"
+                                        Width="260"
+                                        VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <Path Width="14" Height="14" Stretch="Uniform"
+                                              Fill="White"
+                                              Data="M11.318 1.499a2.5 2.5 0 0 0-1.236.7 2.5 2.5 0 0 0-.714 1.86 2.5 2.5 0 0 0 1.547-.76 2.5 2.5 0 0 0 .65-1.8 2.5 2.5 0 0 0-.247-.999ZM13.793 4.48c-1.206-.076-2.234.677-2.789.677-.55 0-1.392-.65-2.3-.632-1.182.017-2.277.695-2.883 1.767-1.232 2.137-.313 5.301.872 7.037.576.839 1.262 1.78 2.172 1.748.873-.035 1.203-.563 2.285-.563 1.07 0 1.375.563 2.282.549.94-.016 1.53-.852 2.102-1.708.651-.954.925-1.875.934-1.92-.02-.01-1.856-.71-1.876-2.827-.016-1.764 1.45-2.607 1.516-2.643-.834-1.225-2.15-1.37-2.52-1.399Z" />
+                                        <TextBlock Text="x86" VerticalAlignment="Center" />
+                                        <TextBlock Text="BROWSE BIN FOLDER" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="BinBrowseColumn" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" Text="{Binding LinuxBinPath}" Watermark="Linux bin/release path" HorizontalAlignment="Stretch" />
+                                <Button Grid.Column="1"
+                                        Classes="browse-action"
+                                        Click="OnBrowseLinuxBinPath"
+                                        Width="260"
+                                        VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <Path Width="14" Height="14" Stretch="Uniform"
+                                              Fill="White"
+                                              Data="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Zm0 2.4a1 1 0 1 1 0 2.2 1 1 0 0 1 0-2.2ZM4 9.6a1 1 0 1 1 0-2.2 1 1 0 0 1 0 2.2Zm8 0a1 1 0 1 1 0-2.2 1 1 0 0 1 0 2.2Zm-6.4 3.2a1 1 0 1 1 2 0 1 1 0 0 1-2 0Zm2.5-6.5A3 3 0 0 1 11 8a3 3 0 0 1-.9 2.13l-.7-.71A2 2 0 0 0 10 8a2 2 0 0 0-2-2c-.3 0-.6.07-.85.18l-.75-.88A3 3 0 0 1 8.1 6.3Z" />
+                                        <TextBlock Text="x64" VerticalAlignment="Center" />
+                                        <TextBlock Text="BROWSE BIN FOLDER" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="BinBrowseColumn" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" Text="{Binding WindowsBinPath}" Watermark="Windows bin/release path" HorizontalAlignment="Stretch" />
+                                <Button Grid.Column="1"
+                                        Classes="browse-action"
+                                        Click="OnBrowseWindowsBinPath"
+                                        Width="260"
+                                        VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <Path Width="14" Height="14" Stretch="Uniform"
+                                              Fill="White"
+                                              Data="M6.555 3.46v4.69l-6.555-.47V2.99l6.555-.75Zm.845-.95 8.6-1.37v6.77l-8.6-.66V2.51Zm-7.4 5.9 6.555.45v4.69l-6.555-.94V7.46Zm7.4.51 8.6.6v6.77l-8.6-1.36V7.97Z" />
+                                        <TextBlock Text="x64" VerticalAlignment="Center" />
+                                        <TextBlock Text="BROWSE BIN FOLDER" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="BinBrowseColumn" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" Text="{Binding WindowsBinPathX86}" Watermark="Windows bin/release path (x86)" HorizontalAlignment="Stretch" />
+                                <Button Grid.Column="1"
+                                        Classes="browse-action"
+                                        Click="OnBrowseWindowsBinPathX86"
+                                        Width="260"
+                                        VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <Path Width="14" Height="14" Stretch="Uniform"
+                                              Fill="White"
+                                              Data="M6.555 3.46v4.69l-6.555-.47V2.99l6.555-.75Zm.845-.95 8.6-1.37v6.77l-8.6-.66V2.51Zm-7.4 5.9 6.555.45v4.69l-6.555-.94V7.46Zm7.4.51 8.6.6v6.77l-8.6-1.36V7.97Z" />
+                                        <TextBlock Text="x86" VerticalAlignment="Center" />
+                                        <TextBlock Text="BROWSE BIN FOLDER" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+                    </StackPanel>
+                    <Grid ColumnDefinitions="3*,1*" ColumnSpacing="8" Margin="0,8,0,0">
+                        <TextBox Grid.Column="0" Text="{Binding ExecutionScript}" Watermark="Execution script (e.g. MODSpector)" />
+                        <Button Grid.Column="1"
+                                Classes="browse-action"
+                                Content="BROWSE SCRIPT"
+                                HorizontalAlignment="Right"
+                                Click="OnBrowseExecutionScript" />
+                    </Grid>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Grid.Row="1" Spacing="16">
+                    <Border BorderBrush="{DynamicResource BorderBrushColor}" BorderThickness="1" CornerRadius="10" Padding="10">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Publication targets" FontWeight="SemiBold" />
+                            <ItemsControl ItemsSource="{Binding NewProjectDraft.PublicationTargets}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vms:PublicationDestinationViewModel">
+                                        <Border BorderBrush="{DynamicResource BorderBrushColor}" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,4">
+                                            <StackPanel Spacing="6">
+                                                <ComboBox ItemsSource="{Binding SupportedTypes}" SelectedItem="{Binding Type}" />
+                                                <StackPanel IsVisible="{Binding IsLocalDirectory}" Spacing="4">
+                                                    <TextBlock Text="Local directory" FontWeight="SemiBold" />
+                                                    <TextBox Text="{Binding LocalDirectoryPath}" />
+                                                    <Button Classes="browse-action"
+                                                            Content="BROWSE FOLDER"
+                                                            HorizontalAlignment="Left"
+                                                            Click="OnBrowsePublicationFolder" />
+                                                </StackPanel>
+                                                <StackPanel IsVisible="{Binding IsGitHubRelease}" Spacing="4">
+                                                    <TextBlock Text="GitHub release" FontWeight="SemiBold" />
+                                                    <TextBox Text="{Binding GitHubRepositoryUrl}" Watermark="https://github.com/owner/repo" />
+                                                    <TextBlock Text="Access token" FontWeight="SemiBold" />
+                                                    <TextBox Text="{Binding GitHubAccessToken}" Watermark="Personal access token" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Content="ADD PUBLICATION TARGET"
+                                    Command="{Binding DataContext.AddPublicationTargetCommand, ElementName=Root}"
+                                    HorizontalAlignment="Left" />
+                        </StackPanel>
+                    </Border>
+                    <Border BorderBrush="{DynamicResource BorderBrushColor}" BorderThickness="1" CornerRadius="10" Padding="10">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Launch options" FontWeight="SemiBold" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="Sizing" VerticalAlignment="Center" />
+                                <ComboBox ItemsSource="{Binding NewProjectDraft.LaunchOptions.AvailableSizingModes}"
+                                          SelectedItem="{Binding NewProjectDraft.LaunchOptions.Mode}"
+                                          Width="140" />
+                                <ComboBox ItemsSource="{Binding NewProjectDraft.LaunchOptions.PixelPresets}"
+                                          SelectedItem="{Binding NewProjectDraft.LaunchOptions.SelectedPixelPreset}"
+                                          IsVisible="{Binding NewProjectDraft.LaunchOptions.IsPixelMode}" />
+                                <ComboBox ItemsSource="{Binding NewProjectDraft.LaunchOptions.PercentPresets}"
+                                          SelectedItem="{Binding NewProjectDraft.LaunchOptions.SelectedPercentPreset}"
+                                          IsVisible="{Binding NewProjectDraft.LaunchOptions.IsPercentMode}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="Location" VerticalAlignment="Center" />
+                                <ComboBox ItemsSource="{Binding NewProjectDraft.LaunchOptions.AvailablePositions}"
+                                          SelectedItem="{Binding NewProjectDraft.LaunchOptions.Position}"
+                                          Width="180" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,12,0,0">
+                                <TextBlock Text="Options" VerticalAlignment="Center" />
+                                <CheckBox IsChecked="{Binding NewProjectDraft.LaunchOptions.CreateDesktopShortcut}" Content="Desktop icon" />
+                                <CheckBox IsChecked="{Binding NewProjectDraft.LaunchOptions.AddToDock}" Content="Dock icon" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border BorderBrush="{DynamicResource BorderBrushColor}" BorderThickness="1" CornerRadius="10" Padding="10">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Network Addresses" FontSize="16" FontWeight="SemiBold" />
+                            <TextBox Text="{Binding NewProjectDraft.LaunchOptions.EntryUrl}" Watermark="http://127.0.0.1:60000" />
+                            <TextBox Text="{Binding NewProjectDraft.SupportUrl}" Watermark="Support URL" />
+                            <TextBox Text="{Binding NewProjectDraft.SupportEmail}" Watermark="Support Email" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+                    <Button Content="SAVE"
+                            Command="{Binding SaveNewProjectCommand}"
+                            IsEnabled="{Binding IsProjectDirty}" />
+                    <Button Classes="cancel-action"
+                            Content="CANCEL"
+                            Command="{Binding CancelProjectFormCommand}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+    </DockPanel>
+</Window>

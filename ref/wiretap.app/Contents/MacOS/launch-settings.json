@@ -1,0 +1,9 @@
+{
+  "width": 1280,
+  "height": 720,
+  "position": "Centered",
+  "enableDevTools": false,
+  "executionScript": "MODSpector",
+  "entryUrl": "http://127.0.0.1:60000",
+  "icon": "icons/appicon.png"
+}

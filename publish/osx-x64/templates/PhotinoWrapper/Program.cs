@@ -27,9 +27,16 @@ internal static class Program
             LogSink.Append($"Loaded launch settings from {settingsPath} (exists={File.Exists(settingsPath)}).");
 
             using var serverManager = new ServerProcessManager(appRoot, launch, LogSink.Append);
+            
+            // Kill any existing processes using the port before starting
+            var entryUrl = serverManager.GetEntryUrl();
+            if (!string.IsNullOrWhiteSpace(entryUrl))
+            {
+                serverManager.KillProcessesUsingPort(entryUrl);
+            }
+            
             var backendStarted = serverManager.TryStart(out var backendMessage);
 
-            var entryUrl = serverManager.GetEntryUrl();
             if (string.IsNullOrWhiteSpace(entryUrl))
             {
                 LogSink.Append("No entry URL configured; assuming execution script provides its own UI. Not loading Photino host content.");
@@ -53,9 +60,31 @@ internal static class Program
                 target?.SendWebMessage($"Received message: {message}");
             });
 
-            LogSink.Append($"Loading entry URL: {entryUrl}");
-            window.Load(entryUrl);
-            window.WaitForClose();
+            // Wait for the backend port to become available before loading the URL
+            var portReady = serverManager.WaitForPortAsync(entryUrl).GetAwaiter().GetResult();
+            
+            if (!portReady)
+            {
+                LogSink.Append($"Backend port did not become available; showing fallback page.");
+                var fallbackHtml = BuildFallbackHtml(launch, backendStarted, "Backend server did not respond within the timeout period.");
+                window.LoadRawString(fallbackHtml);
+            }
+            else
+            {
+                LogSink.Append($"Loading entry URL: {entryUrl}");
+                window.Load(entryUrl);
+            }
+            
+            try
+            {
+                window.WaitForClose();
+            }
+            finally
+            {
+                // Ensure backend process is terminated when window closes
+                LogSink.Append("Window closed, ensuring backend process is terminated.");
+                serverManager.Dispose();
+            }
             return 0;
         }
         catch (Exception ex)

@@ -102,11 +102,13 @@
         <StackPanel Spacing="16">
             <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
                 <TextBlock Text="Projects" FontSize="28" FontWeight="SemiBold" VerticalAlignment="Center" />
-                <Button Grid.Column="1"
-                        Classes="create-action"
-                        Content="CREATE PROJECT"
-                        Command="{Binding CreateProjectCommand}"
-                        HorizontalAlignment="Right" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                    <Button Content="RESET"
+                            Command="{Binding ResetStateCommand}" />
+                    <Button Classes="create-action"
+                            Content="CREATE PROJECT"
+                            Command="{Binding CreateProjectCommand}" />
+                </StackPanel>
             </Grid>
             <TextBlock Foreground="{DynamicResource PrimaryBrush}"
                        FontSize="13"
@@ -184,7 +186,8 @@
                                                     <Button Classes="publish-action"
                                                             Content="PUBLISH"
                                                             Command="{Binding DataContext.AddReleaseCommand, ElementName=Root}"
-                                                            CommandParameter="{Binding}" />
+                                                            CommandParameter="{Binding}"
+                                                            ToolTip.Tip="{Binding DataContext.PublishButtonDisabledReason, ElementName=Root}" />
                                                 </StackPanel>
                                                 <StackPanel Orientation="Horizontal"
                                                             HorizontalAlignment="Right"

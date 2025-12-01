@@ -10,7 +10,8 @@ public sealed class DependencyChecker
 {
     private readonly DependencyRequirement[] _requirements =
     {
-        new("Dotnet SDK", "dotnet", new[] { "--version" }, "Install the .NET SDK to build Photino wrappers.")
+        new("Dotnet SDK", "dotnet", new[] { "--version" }, "Install the .NET SDK to build Photino wrappers."),
+        new("Photino Templates", "templates-check", Array.Empty<string>(), "Photino wrapper templates are missing. Reinstall Electronifier or ensure templates/PhotinoWrapper directory exists.")
     };
 
     public async Task<IReadOnlyList<DependencyRequirementStatus>> ProbeAsync(CancellationToken cancellationToken = default)
@@ -27,6 +28,12 @@ public sealed class DependencyChecker
 
     private static async Task<DependencyRequirementStatus> CheckRequirementAsync(DependencyRequirement requirement, CancellationToken cancellationToken)
     {
+        // Special handling for Photino templates check
+        if (requirement.Command == "templates-check")
+        {
+            return CheckPhotinoTemplates(requirement);
+        }
+
         var startInfo = new ProcessStartInfo(requirement.Command)
         {
             RedirectStandardOutput = true,
@@ -66,5 +73,26 @@ public sealed class DependencyChecker
         {
             return DependencyRequirementStatus.Unknown(requirement, ex.Message);
         }
+    }
+
+    private static DependencyRequirementStatus CheckPhotinoTemplates(DependencyRequirement requirement)
+    {
+        var baseDir = AppContext.BaseDirectory;
+        var candidates = new[]
+        {
+            Path.Combine(baseDir, "templates", "PhotinoWrapper"),
+            Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "templates", "PhotinoWrapper")),
+            Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..", "src", "Electronifier.Core", "templates", "PhotinoWrapper")),
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "templates", "PhotinoWrapper")),
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "src", "Electronifier.Core", "templates", "PhotinoWrapper"))
+        };
+
+        var match = candidates.FirstOrDefault(Directory.Exists);
+        if (match is not null)
+        {
+            return DependencyRequirementStatus.Installed(requirement);
+        }
+
+        return DependencyRequirementStatus.Missing(requirement, "Template directory not found in any expected location.");
     }
 }

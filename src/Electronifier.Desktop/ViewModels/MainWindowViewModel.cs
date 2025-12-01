@@ -38,6 +38,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private readonly RelayCommand _saveNewProjectCommand;
     private readonly RelayCommand _cancelProjectFormCommand;
     private readonly RelayCommand _deleteProjectCommand;
+    private readonly RelayCommand _resetStateCommand;
     private readonly ReleaseAutomationService _releaseAutomationService = new();
     private const int MaxPublishLogEntries = 20;
 
@@ -58,11 +59,16 @@ public sealed class MainWindowViewModel : ViewModelBase
     private double _releaseProgress;
     private bool _releaseSucceeded;
     private ProjectDefinitionViewModel? _trackedProjectForDirty;
+    private string _publishButtonDisabledReason = string.Empty;
+    private readonly HashSet<string> _projectsCurrentlyPublishing = new();
+    private DateTime _lastPublishClickTime = DateTime.MinValue;
+    private System.Timers.Timer? _publishButtonReEnableTimer;
     private PropertyChangedEventHandler? _projectPropertyChangedHandler;
     private NotifyCollectionChangedEventHandler? _publicationTargetsChangedHandler;
     private readonly List<PublicationDestinationViewModel> _trackedDestinations = new();
     private readonly PropertyChangedEventHandler _destinationPropertyChangedHandler;
     private PropertyChangedEventHandler? _launchOptionsPropertyChangedHandler;
+    // private string _publishButtonDisabledReason = string.Empty; // This line was removed as it's a duplicate of the one above the new fields.
 
     public MainWindowViewModel()
     {
@@ -81,7 +87,9 @@ public sealed class MainWindowViewModel : ViewModelBase
         _addPublicationTargetCommand = new RelayCommand(_ => AddPublicationTarget(), _ => GetActiveProject() is not null);
         _removePublicationTargetCommand = new RelayCommand(obj => RemovePublicationTarget(obj as PublicationDestinationViewModel), _ => GetActiveProject() is not null);
         _refreshDependenciesCommand = new RelayCommand(_ => _ = RefreshDependenciesAsync(), _ => !IsCheckingDependencies);
+        _refreshDependenciesCommand = new RelayCommand(_ => _ = RefreshDependenciesAsync(), _ => !IsCheckingDependencies);
         _createReleaseCommand = new RelayCommand(_ => CreateRelease(), _ => CanCreateRelease());
+        _resetStateCommand = new RelayCommand(_ => ResetState());
 
         Projects.CollectionChanged += (_, _) => _saveCommand.RaiseCanExecuteChanged();
         _destinationPropertyChangedHandler = (_, _) => MarkProjectDirty();
@@ -107,6 +115,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     public ICommand CancelProjectFormCommand => _cancelProjectFormCommand;
     public ICommand DeleteProjectCommand => _deleteProjectCommand;
     public ICommand RemovePublicationTargetCommand => _removePublicationTargetCommand;
+    public ICommand ResetStateCommand => _resetStateCommand;
 
         public ProjectDefinitionViewModel? SelectedProject
         {
@@ -280,6 +289,12 @@ public sealed class MainWindowViewModel : ViewModelBase
     }
 
     public bool HasMissingDependencies => DependencyStatuses.Any(status => status.IsMissing);
+
+    public string PublishButtonDisabledReason
+    {
+        get => _publishButtonDisabledReason;
+        private set => SetProperty(ref _publishButtonDisabledReason, value);
+    }
 
     private async Task InitializeAsync()
     {
@@ -492,6 +507,67 @@ public sealed class MainWindowViewModel : ViewModelBase
         _ = RunReleaseWorkflowAsync();
     }
 
+    private void ResetState()
+    {
+        _projectsCurrentlyPublishing.Clear();
+        IsReleasing = false;
+        ActiveReleaseProject = null;
+        _lastPublishClickTime = DateTime.MinValue;
+        
+        _publishButtonReEnableTimer?.Stop();
+        _publishButtonReEnableTimer = null;
+
+        _addReleaseCommand.RaiseCanExecuteChanged();
+        
+        StatusMessage = "Application state reset.";
+        LogPublishActivity("Manual state reset triggered by user.");
+    }
+
+    private void QueueRelease(ProjectDefinitionViewModel? project)
+    {
+        if (project is null)
+        {
+            LogPublishActivity("Publish button clicked but no project was bound.");
+            return;
+        }
+
+        // Check if this project is already being published
+        if (_projectsCurrentlyPublishing.Contains(project.Name))
+        {
+            LogPublishActivity($"Release workflow aborted: '{project.Name}' is already being published.");
+            StatusMessage = $"Publication already in progress for '{project.Name}'.";
+            return;
+        }
+
+        if (!CanQueueRelease(project))
+        {
+            LogPublishActivity($"Publish button click ignored while prerequisites not satisfied for '{project.Name}'.");
+            return;
+        }
+
+        // Disable button for 10 seconds
+        _lastPublishClickTime = DateTime.Now;
+        _publishButtonReEnableTimer?.Stop();
+        _publishButtonReEnableTimer = new System.Timers.Timer(10000); // 10 seconds
+        _publishButtonReEnableTimer.Elapsed += (s, e) =>
+        {
+            _publishButtonReEnableTimer?.Stop();
+            _lastPublishClickTime = DateTime.MinValue;
+            Dispatcher.UIThread.Post(() => _addReleaseCommand.RaiseCanExecuteChanged());
+        };
+        _publishButtonReEnableTimer.AutoReset = false;
+        _publishButtonReEnableTimer.Start();
+        _addReleaseCommand.RaiseCanExecuteChanged();
+
+        // Mark project as currently publishing
+        _projectsCurrentlyPublishing.Add(project.Name);
+
+        LogPublishActivity($"Publish button clicked for '{project.Name}'.");
+        SelectedProject = project;
+        ActiveReleaseProject = project;
+        _ = RunReleaseWorkflowAsync();
+    }
+
     private async Task RunReleaseWorkflowAsync()
     {
         LogPublishActivity("RunReleaseWorkflowAsync invoked.");
@@ -580,7 +656,15 @@ public sealed class MainWindowViewModel : ViewModelBase
         finally
         {
             IsReleasing = false;
+            
+            // Remove project from currently publishing set
+            if (project != null)
+            {
+                _projectsCurrentlyPublishing.Remove(project.Name);
+            }
+            
             ActiveReleaseProject = null;
+            _addReleaseCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -619,49 +703,124 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     private bool CanCreateRelease()
     {
-        if (!IsProjectsStage || HasMissingDependencies || IsReleasing || SelectedProject is null)
+        if (!IsProjectsStage)
         {
+            PublishButtonDisabledReason = "Not in projects view";
+            return false;
+        }
+
+        if (HasMissingDependencies)
+        {
+            PublishButtonDisabledReason = "Missing required dependencies (.NET SDK)";
+            return false;
+        }
+
+        if (IsReleasing)
+        {
+            PublishButtonDisabledReason = "Release already in progress";
+            return false;
+        }
+
+        if (SelectedProject is null)
+        {
+            PublishButtonDisabledReason = "No project selected";
             return false;
         }
 
         if (!HasAnyBinPath(SelectedProject))
         {
+            PublishButtonDisabledReason = "No bin paths configured for any platform";
             return false;
         }
 
-        return GetPublicationTarget(SelectedProject) is not null;
+        if (GetPublicationTarget(SelectedProject) is null)
+        {
+            PublishButtonDisabledReason = "No publication target configured";
+            return false;
+        }
+
+        PublishButtonDisabledReason = string.Empty;
+        return true;
     }
 
     private bool CanQueueRelease(ProjectDefinitionViewModel? project)
     {
-        if (project is null)
+        // Check if button is in cooldown period (10 seconds after last click)
+        if ((DateTime.Now - _lastPublishClickTime).TotalSeconds < 10)
         {
+            var remainingSeconds = (int)(10 - (DateTime.Now - _lastPublishClickTime).TotalSeconds);
+            PublishButtonDisabledReason = $"Please wait {remainingSeconds}s before publishing again";
             return false;
         }
 
-        if (!IsProjectsStage || HasMissingDependencies || IsReleasing)
+        if (!IsProjectsStage)
         {
+            PublishButtonDisabledReason = "Not in projects view";
+            return false;
+        }
+
+        if (HasMissingDependencies)
+        {
+            PublishButtonDisabledReason = "Missing required dependencies (.NET SDK)";
+            return false;
+        }
+
+        if (IsReleasing)
+        {
+            PublishButtonDisabledReason = "Release already in progress";
+            return false;
+        }
+
+        if (project is null)
+        {
+            PublishButtonDisabledReason = "No project selected";
+            return false;
+        }
+
+        // Check if this specific project is currently being published
+        if (_projectsCurrentlyPublishing.Contains(project.Name))
+        {
+            PublishButtonDisabledReason = $"'{project.Name}' is currently being published";
             return false;
         }
 
         if (!HasAnyBinPath(project))
         {
+            PublishButtonDisabledReason = "No bin paths configured for any platform";
             return false;
         }
 
-        return GetPublicationTarget(project) is not null;
+        if (GetPublicationTarget(project) is null)
+        {
+            PublishButtonDisabledReason = "No publication target configured";
+            return false;
+        }
+
+        PublishButtonDisabledReason = string.Empty;
+        return true;
     }
 
     private PublicationDestinationViewModel? GetPublicationTarget(ProjectDefinitionViewModel? project)
     {
-        if (project is null)
+        if (project?.PublicationTargets is null || project.PublicationTargets.Count == 0)
         {
             return null;
         }
 
-        return project.PublicationTargets.FirstOrDefault(target =>
-            target.Type == PublicationDestinationType.LocalDirectory && !string.IsNullOrWhiteSpace(target.LocalDirectoryPath)
-            || target.Type == PublicationDestinationType.GitHubRelease && !string.IsNullOrWhiteSpace(target.GitHubRepositoryUrl) && !string.IsNullOrWhiteSpace(target.GitHubAccessToken));
+        try
+        {
+            return project.PublicationTargets.FirstOrDefault(target =>
+                (target.IsLocalDirectory && !string.IsNullOrWhiteSpace(target.LocalDirectoryPath)) ||
+                (target.IsGitHubRelease && !string.IsNullOrWhiteSpace(target.GitHubRepositoryUrl) && !string.IsNullOrWhiteSpace(target.GitHubAccessToken))
+            );
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            // Handle corrupted encryption data gracefully
+            // Return first local directory target as fallback, or null if none exists
+            return project.PublicationTargets.FirstOrDefault(target =>
+                target.IsLocalDirectory && !string.IsNullOrWhiteSpace(target.LocalDirectoryPath));
+        }
     }
 
     private void StartCreatingProject()
@@ -683,26 +842,6 @@ public sealed class MainWindowViewModel : ViewModelBase
         _isEditingExistingProject = true;
         OnPropertyChanged(nameof(IsEditingExistingProject));
         Stage = ApplicationStage.NewProject;
-    }
-
-    private void QueueRelease(ProjectDefinitionViewModel? project)
-    {
-        if (project is null)
-        {
-            LogPublishActivity("Publish button clicked but no project was bound.");
-            return;
-        }
-
-        if (!CanQueueRelease(project))
-        {
-            LogPublishActivity($"Publish button click ignored while prerequisites not satisfied for '{project.Name}'.");
-            return;
-        }
-
-        LogPublishActivity($"Publish button clicked for '{project.Name}'.");
-        SelectedProject = project;
-        ActiveReleaseProject = project;
-        _ = RunReleaseWorkflowAsync();
     }
 
     private void LogPublishActivity(string message)

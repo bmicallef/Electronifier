@@ -332,7 +332,12 @@ public sealed class ReleaseAutomationService
             return match;
         }
 
-        throw new DirectoryNotFoundException("Unable to locate the Photino wrapper template under templates/PhotinoWrapper.");
+        var checkedPaths = string.Join(Environment.NewLine + "  - ", candidates);
+        var errorMessage = $"Unable to locate the Photino wrapper template directory. This is required to build releases.{Environment.NewLine}{Environment.NewLine}" +
+                          $"Searched the following locations:{Environment.NewLine}  - {checkedPaths}{Environment.NewLine}{Environment.NewLine}" +
+                          $"Please ensure the templates/PhotinoWrapper directory exists in your Electronifier installation.";
+        
+        throw new DirectoryNotFoundException(errorMessage);
     }
 
     private void CopyTemplate(string destination)

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Linq;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -36,6 +37,157 @@ internal sealed class ServerProcessManager : IDisposable
         catch
         {
             // ignored
+        }
+    }
+
+    public async Task<bool> WaitForPortAsync(string? entryUrl, int maxWaitSeconds = 30)
+    {
+        if (string.IsNullOrWhiteSpace(entryUrl))
+        {
+            return true;
+        }
+
+        if (!TryExtractPortFromUrl(entryUrl, out var host, out var port))
+        {
+            AppendLog($"Could not extract port from URL '{entryUrl}', skipping port check.");
+            return true;
+        }
+
+        AppendLog($"Waiting for {host}:{port} to become available (max {maxWaitSeconds}s)...");
+        var startTime = DateTime.UtcNow;
+        var delay = 100;
+        var maxDelay = 2000;
+
+        while ((DateTime.UtcNow - startTime).TotalSeconds < maxWaitSeconds)
+        {
+            if (IsPortAvailable(host, port))
+            {
+                var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
+                AppendLog($"Port {host}:{port} is available after {elapsed:F1}s.");
+                return true;
+            }
+
+            await Task.Delay(delay).ConfigureAwait(false);
+            delay = Math.Min(delay * 2, maxDelay);
+        }
+
+        var totalWait = (DateTime.UtcNow - startTime).TotalSeconds;
+        AppendLog($"Port {host}:{port} did not become available after {totalWait:F1}s.");
+        return false;
+    }
+
+    private static bool TryExtractPortFromUrl(string url, out string host, out int port)
+    {
+        host = "localhost";
+        port = 0;
+
+        try
+        {
+            var uri = new Uri(url);
+            host = uri.Host;
+            port = uri.Port;
+
+            if (port <= 0 || port > 65535)
+            {
+                return false;
+            }
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private bool IsPortAvailable(string host, int port)
+    {
+        try
+        {
+            using var client = new System.Net.Sockets.TcpClient();
+            var connectTask = client.ConnectAsync(host, port);
+            var completed = connectTask.Wait(TimeSpan.FromMilliseconds(500));
+            
+            if (completed && client.Connected)
+            {
+                return true;
+            }
+
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public void KillProcessesUsingPort(string? entryUrl)
+    {
+        if (string.IsNullOrWhiteSpace(entryUrl))
+        {
+            return;
+        }
+
+        if (!TryExtractPortFromUrl(entryUrl, out var host, out var port))
+        {
+            AppendLog($"Could not extract port from URL '{entryUrl}', skipping port cleanup.");
+            return;
+        }
+
+        try
+        {
+            AppendLog($"Checking for processes using port {port}...");
+            
+            // Use lsof to find processes using the port (works on macOS and Linux)
+            var lsofStartInfo = new ProcessStartInfo
+            {
+                FileName = "lsof",
+                Arguments = $"-ti :{port}",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var lsofProcess = Process.Start(lsofStartInfo);
+            if (lsofProcess == null)
+            {
+                AppendLog("Could not start lsof to check for port usage.");
+                return;
+            }
+
+            var output = lsofProcess.StandardOutput.ReadToEnd();
+            lsofProcess.WaitForExit();
+
+            if (string.IsNullOrWhiteSpace(output))
+            {
+                AppendLog($"No processes found using port {port}.");
+                return;
+            }
+
+            var pids = output.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var pidStr in pids)
+            {
+                if (int.TryParse(pidStr.Trim(), out var pid))
+                {
+                    try
+                    {
+                        var process = Process.GetProcessById(pid);
+                        AppendLog($"Killing process {pid} ({process.ProcessName}) using port {port}...");
+                        process.Kill(true);
+                        process.WaitForExit(2000);
+                        AppendLog($"Successfully killed process {pid}.");
+                    }
+                    catch (Exception ex)
+                    {
+                        AppendLog($"Failed to kill process {pid}: {ex.Message}");
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"Error during port cleanup: {ex.Message}");
         }
     }
 

@@ -335,6 +335,11 @@ public sealed class ProjectDefinitionViewModel : ViewModelBase
     public bool HasAnyWindowsBinPath => HasWindowsBinPath || HasWindowsBinPathX86;
     public bool HasLinuxBinPath => !string.IsNullOrWhiteSpace(LinuxBinPath);
 
+    // Platform support detection for UI
+    public bool IsMacOSSupported => Core.Services.PlatformDetector.IsPlatformSupported(Core.Models.PlatformTarget.macOS);
+    public bool IsWindowsSupported => Core.Services.PlatformDetector.IsPlatformSupported(Core.Models.PlatformTarget.Windows);
+    public bool IsLinuxSupported => Core.Services.PlatformDetector.IsPlatformSupported(Core.Models.PlatformTarget.Linux);
+
     public ObservableCollection<PublicationDestinationViewModel> PublicationTargets { get; }
     public LaunchOptionsViewModel LaunchOptions { get; }
 

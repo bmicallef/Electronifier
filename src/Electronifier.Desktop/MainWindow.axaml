@@ -17,6 +17,7 @@
     <DockPanel>
         <DockPanel.Resources>
             <converters:BooleanToDevtoolsLabelConverter x:Key="DevtoolsLabelConverter" />
+            <converters:BooleanToOpacityConverter x:Key="BooleanToOpacityConverter" />
         </DockPanel.Resources>
         <Grid RowDefinitions="*" ColumnDefinitions="*">
         <!-- Splash Screen -->
@@ -192,14 +193,17 @@
                                                     <Path Width="16" Height="16" Stretch="Uniform"
                                                           Fill="White"
                                                           IsVisible="{Binding HasAnyMacBinPath}"
+                                                          Opacity="{Binding IsMacOSSupported, Converter={StaticResource BooleanToOpacityConverter}}"
                                                           Data="M11.318 1.499a2.5 2.5 0 0 0-1.236.7 2.5 2.5 0 0 0-.714 1.86 2.5 2.5 0 0 0 1.547-.76 2.5 2.5 0 0 0 .65-1.8 2.5 2.5 0 0 0-.247-.999ZM13.793 4.48c-1.206-.076-2.234.677-2.789.677-.55 0-1.392-.65-2.3-.632-1.182.017-2.277.695-2.883 1.767-1.232 2.137-.313 5.301.872 7.037.576.839 1.262 1.78 2.172 1.748.873-.035 1.203-.563 2.285-.563 1.07 0 1.375.563 2.282.549.94-.016 1.53-.852 2.102-1.708.651-.954.925-1.875.934-1.92-.02-.01-1.856-.71-1.876-2.827-.016-1.764 1.45-2.607 1.516-2.643-.834-1.225-2.15-1.37-2.52-1.399Z" />
                                                     <Path Width="16" Height="16" Stretch="Uniform"
                                                           Fill="White"
                                                           IsVisible="{Binding HasLinuxBinPath}"
+                                                          Opacity="{Binding IsLinuxSupported, Converter={StaticResource BooleanToOpacityConverter}}"
                                                           Data="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Zm0 2.4a1 1 0 1 1 0 2.2 1 1 0 0 1 0-2.2ZM4 9.6a1 1 0 1 1 0-2.2 1 1 0 0 1 0 2.2Zm8 0a1 1 0 1 1 0-2.2 1 1 0 0 1 0 2.2Zm-6.4 3.2a1 1 0 1 1 2 0 1 1 0 0 1-2 0Zm2.5-6.5A3 3 0 0 1 11 8a3 3 0 0 1-.9 2.13l-.7-.71A2 2 0 0 0 10 8a2 2 0 0 0-2-2c-.3 0-.6.07-.85.18l-.75-.88A3 3 0 0 1 8.1 6.3Z" />
                                                     <Path Width="16" Height="16" Stretch="Uniform"
                                                           Fill="White"
                                                           IsVisible="{Binding HasAnyWindowsBinPath}"
+                                                          Opacity="{Binding IsWindowsSupported, Converter={StaticResource BooleanToOpacityConverter}}"
                                                           Data="M6.555 3.46v4.69l-6.555-.47V2.99l6.555-.75Zm.845-.95 8.6-1.37v6.77l-8.6-.66V2.51Zm-7.4 5.9 6.555.45v4.69l-6.555-.94V7.46Zm7.4.51 8.6.6v6.77l-8.6-1.36V7.97Z" />
                                                 </StackPanel>
                                             </StackPanel>
@@ -425,14 +429,22 @@
                     </Border>
                 </StackPanel>
 
-                <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
-                    <Button Content="SAVE"
-                            Command="{Binding SaveNewProjectCommand}"
-                            IsEnabled="{Binding IsProjectDirty}" />
-                    <Button Classes="cancel-action"
-                            Content="CANCEL"
-                            Command="{Binding CancelProjectFormCommand}" />
-                </StackPanel>
+                <Grid Grid.Row="2" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto">
+                    <Button Grid.Column="0"
+                            Classes="cancel-action"
+                            Content="DELETE"
+                            Click="OnDeleteProject"
+                            IsVisible="{Binding IsEditingExistingProject}"
+                            HorizontalAlignment="Left" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+                        <Button Content="SAVE"
+                                Command="{Binding SaveNewProjectCommand}"
+                                IsEnabled="{Binding IsProjectDirty}" />
+                        <Button Classes="cancel-action"
+                                Content="CANCEL"
+                                Command="{Binding CancelProjectFormCommand}" />
+                    </StackPanel>
+                </Grid>
             </Grid>
         </Border>
     </Grid>

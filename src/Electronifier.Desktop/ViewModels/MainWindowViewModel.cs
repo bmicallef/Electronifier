@@ -37,6 +37,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private readonly RelayCommand _addReleaseCommand;
     private readonly RelayCommand _saveNewProjectCommand;
     private readonly RelayCommand _cancelProjectFormCommand;
+    private readonly RelayCommand _deleteProjectCommand;
     private readonly ReleaseAutomationService _releaseAutomationService = new();
     private const int MaxPublishLogEntries = 20;
 
@@ -75,6 +76,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             obj => CanQueueRelease(obj as ProjectDefinitionViewModel));
         _saveNewProjectCommand = new RelayCommand(_ => _ = SaveNewProjectAsync(), _ => IsProjectDirty);
         _cancelProjectFormCommand = new RelayCommand(_ => CancelProjectForm());
+        _deleteProjectCommand = new RelayCommand(_ => RequestDeleteProject(), _ => CanDeleteProject());
         _saveCommand = new RelayCommand(_ => _ = SaveStateAsync(), _ => Projects.Any());
         _addPublicationTargetCommand = new RelayCommand(_ => AddPublicationTarget(), _ => GetActiveProject() is not null);
         _removePublicationTargetCommand = new RelayCommand(obj => RemovePublicationTarget(obj as PublicationDestinationViewModel), _ => GetActiveProject() is not null);
@@ -103,6 +105,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     public ICommand AddReleaseCommand => _addReleaseCommand;
     public ICommand SaveNewProjectCommand => _saveNewProjectCommand;
     public ICommand CancelProjectFormCommand => _cancelProjectFormCommand;
+    public ICommand DeleteProjectCommand => _deleteProjectCommand;
     public ICommand RemovePublicationTargetCommand => _removePublicationTargetCommand;
 
         public ProjectDefinitionViewModel? SelectedProject
@@ -665,6 +668,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         NewProjectDraft = new ProjectDefinitionViewModel(new ProjectDefinition());
         _isEditingExistingProject = false;
+        OnPropertyChanged(nameof(IsEditingExistingProject));
         Stage = ApplicationStage.NewProject;
     }
 
@@ -677,6 +681,7 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         NewProjectDraft = project;
         _isEditingExistingProject = true;
+        OnPropertyChanged(nameof(IsEditingExistingProject));
         Stage = ApplicationStage.NewProject;
     }
 
@@ -764,6 +769,33 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         Stage = ApplicationStage.Projects;
         NewProjectDraft = null;
+    }
+
+    public bool IsEditingExistingProject => _isEditingExistingProject;
+
+    private bool CanDeleteProject()
+    {
+        return _isEditingExistingProject && NewProjectDraft is not null;
+    }
+
+    private void RequestDeleteProject()
+    {
+        // This will be called from the UI, which will handle the confirmation dialog
+        // The actual deletion will be done via DeleteProject method
+    }
+
+    public async Task DeleteProjectAsync()
+    {
+        if (NewProjectDraft is null || !_isEditingExistingProject)
+        {
+            return;
+        }
+
+        Projects.Remove(NewProjectDraft);
+        await SaveStateAsync();
+        Stage = ApplicationStage.Projects;
+        NewProjectDraft = null;
+        StatusMessage = "Project deleted successfully.";
     }
 
     private async Task SaveStateAsync()

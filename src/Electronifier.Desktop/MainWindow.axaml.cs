@@ -204,6 +204,92 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnDeleteProject(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel viewModel)
+        {
+            return;
+        }
+
+        if (viewModel.NewProjectDraft is null)
+        {
+            return;
+        }
+
+        var projectName = viewModel.NewProjectDraft.Name;
+        if (string.IsNullOrWhiteSpace(projectName))
+        {
+            projectName = "this project";
+        }
+
+        var dialog = new Window
+        {
+            Title = "Confirm Delete",
+            Width = 400,
+            Height = 180,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false
+        };
+
+        var panel = new StackPanel
+        {
+            Margin = new Thickness(20),
+            Spacing = 16
+        };
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"Are you sure you want to delete \"{projectName}\"?",
+            FontSize = 14,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap
+        });
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "This action cannot be undone.",
+            FontSize = 12,
+            Foreground = Avalonia.Media.Brushes.OrangeRed
+        });
+
+        var buttonPanel = new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+            Spacing = 12
+        };
+
+        var deleteButton = new Button
+        {
+            Content = "DELETE",
+            Classes = { "cancel-action" }
+        };
+        deleteButton.Click += (_, _) =>
+        {
+            dialog.Close(true);
+        };
+
+        var cancelButton = new Button
+        {
+            Content = "CANCEL"
+        };
+        cancelButton.Click += (_, _) =>
+        {
+            dialog.Close(false);
+        };
+
+        buttonPanel.Children.Add(deleteButton);
+        buttonPanel.Children.Add(cancelButton);
+        panel.Children.Add(buttonPanel);
+
+        dialog.Content = panel;
+
+        var result = await dialog.ShowDialog<bool>(this);
+        if (result)
+        {
+            await viewModel.DeleteProjectAsync();
+        }
+    }
+
     public Task ShowAboutDialogAsync()
     {
         var aboutWindow = new AboutWindow

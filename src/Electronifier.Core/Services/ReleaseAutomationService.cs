@@ -800,9 +800,16 @@ public sealed class ReleaseAutomationService
     private static IReadOnlyList<BuildTarget> BuildTargets(ProjectDefinition project, ProjectRelease release, IEnumerable<PlatformTarget> platforms)
     {
         var targets = new List<BuildTarget>();
+        var currentPlatform = PlatformDetector.GetCurrentPlatform();
 
         foreach (var platform in platforms)
         {
+            // Only build for the current platform
+            if (platform != currentPlatform)
+            {
+                continue;
+            }
+
             switch (platform)
             {
                 case PlatformTarget.macOS:

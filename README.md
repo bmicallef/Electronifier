@@ -9,14 +9,9 @@ Electronifier is a native .NET orchestration hub that packages self-hosted .NET 
 
 ## Running locally
 1. Ensure the .NET 9 SDK is installed on macOS/Linux or Windows.
-2. Build the solution:
-   ```
-   dotnet build Electronifier.sln
-   ```
-3. Run the desktop shell:
-   ```
-   dotnet run --project src/Electronifier.Desktop
-   ```
+2. Build and run the solution:
+- dotnet build Electronifier.sln
+dotnet run --project src/Electronifier.Desktop
 
 ## Data layout
 - `ProjectDefinition` captures metadata such as name/version, namespace, organization, support contacts, binary path, and the shared icon path.

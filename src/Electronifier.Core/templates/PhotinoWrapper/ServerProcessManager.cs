@@ -6,12 +6,71 @@ using System.Text;
 
 namespace PhotinoWrapper;
 
+/// <summary>
+/// Captures detailed diagnostic information about backend startup for debugging.
+/// </summary>
+internal sealed class DiagnosticInfo
+{
+    public bool CommandResolved { get; set; }
+    public string? CommandPath { get; set; }
+    public string? CommandArguments { get; set; }
+    public bool FileExists { get; set; }
+    public bool IsExecutable { get; set; }
+    public bool PortInUseBeforeStart { get; set; }
+    public int? PortNumber { get; set; }
+    public bool ProcessStarted { get; set; }
+    public int? ProcessId { get; set; }
+    public bool ProcessExitedEarly { get; set; }
+    public int? ProcessExitCode { get; set; }
+    public string? RuntimeRootPath { get; set; }
+    public bool RuntimeRootExists { get; set; }
+    public List<string> RecentOutput { get; } = new();
+    public string? StartupErrorMessage { get; set; }
+}
+
+/// <summary>
+/// A ring buffer to capture recent process output lines.
+/// </summary>
+internal sealed class OutputBuffer
+{
+    private readonly Queue<string> _lines = new();
+    private readonly int _maxLines;
+    private readonly object _lock = new();
+
+    public OutputBuffer(int maxLines = 50)
+    {
+        _maxLines = maxLines;
+    }
+
+    public void Append(string line)
+    {
+        lock (_lock)
+        {
+            _lines.Enqueue(line);
+            while (_lines.Count > _maxLines)
+            {
+                _lines.Dequeue();
+            }
+        }
+    }
+
+    public List<string> GetLines()
+    {
+        lock (_lock)
+        {
+            return _lines.ToList();
+        }
+    }
+}
+
 internal sealed class ServerProcessManager : IDisposable
 {
     private readonly string _appRoot;
     private readonly LaunchConfig _launchConfig;
     private readonly string _runtimeRoot;
     private readonly Action<string> _logger;
+    private readonly OutputBuffer _outputBuffer = new(50);
+    private readonly DiagnosticInfo _diagnostics = new();
     private Process? _process;
 
     public ServerProcessManager(string appRoot, LaunchConfig launchConfig, Action<string> logger)
@@ -20,6 +79,63 @@ internal sealed class ServerProcessManager : IDisposable
         _launchConfig = launchConfig;
         _runtimeRoot = Path.Combine(appRoot, "runtime");
         _logger = logger ?? (_ => { });
+        
+        // Initialize diagnostic info
+        _diagnostics.RuntimeRootPath = _runtimeRoot;
+        _diagnostics.RuntimeRootExists = Directory.Exists(_runtimeRoot);
+    }
+
+    /// <summary>
+    /// Returns the diagnostic information collected during startup attempts.
+    /// </summary>
+    public DiagnosticInfo GetDiagnostics()
+    {
+        // Populate recent output from buffer
+        _diagnostics.RecentOutput.Clear();
+        _diagnostics.RecentOutput.AddRange(_outputBuffer.GetLines());
+        
+        // Check if process exited early
+        if (_process is not null)
+        {
+            try
+            {
+                if (_process.HasExited)
+                {
+                    _diagnostics.ProcessExitedEarly = true;
+                    _diagnostics.ProcessExitCode = _process.ExitCode;
+                }
+            }
+            catch
+            {
+                // Process may have already been disposed
+            }
+        }
+        
+        return _diagnostics;
+    }
+
+    /// <summary>
+    /// Checks if the target port is already in use before we attempt to start the backend.
+    /// </summary>
+    public void CheckInitialPortStatus(string? entryUrl)
+    {
+        if (string.IsNullOrWhiteSpace(entryUrl))
+        {
+            return;
+        }
+
+        if (!TryExtractPortFromUrl(entryUrl, out var host, out var port))
+        {
+            return;
+        }
+
+        _diagnostics.PortNumber = port;
+        _diagnostics.PortInUseBeforeStart = IsPortAvailable(host, port);
+        
+        if (_diagnostics.PortInUseBeforeStart)
+        {
+            AppendLog($"Port {port} is already in use before starting backend.");
+        }
     }
 
     public string? GetEntryUrl()
@@ -193,26 +309,52 @@ internal sealed class ServerProcessManager : IDisposable
 
     public bool TryStart(out string message)
     {
-        if (!Directory.Exists(_runtimeRoot))
+        _diagnostics.RuntimeRootExists = Directory.Exists(_runtimeRoot);
+        
+        if (!_diagnostics.RuntimeRootExists)
         {
             message = $"Managed runtime not found at {_runtimeRoot}.";
+            _diagnostics.StartupErrorMessage = message;
             AppendLog(message);
             return false;
         }
 
         var (fileName, arguments) = ResolveCommand();
-        if (string.IsNullOrWhiteSpace(fileName))
+        _diagnostics.CommandPath = fileName;
+        _diagnostics.CommandArguments = arguments != null ? string.Join(" ", arguments) : null;
+        _diagnostics.CommandResolved = !string.IsNullOrWhiteSpace(fileName);
+        
+        if (!_diagnostics.CommandResolved)
         {
             message = "No execution script or managed DLL was found in the runtime folder.";
+            _diagnostics.StartupErrorMessage = message;
             AppendLog(message);
             return false;
         }
 
+        // Check if file exists and is executable
+        _diagnostics.FileExists = File.Exists(fileName);
+        if (!_diagnostics.FileExists)
+        {
+            // Check if it's a system command like 'dotnet'
+            _diagnostics.FileExists = IsSystemCommand(fileName!);
+        }
+        
+        if (_diagnostics.FileExists && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            _diagnostics.IsExecutable = HasExecutePermission(fileName!);
+        }
+        else
+        {
+            _diagnostics.IsExecutable = _diagnostics.FileExists; // On Windows, just check existence
+        }
+
         AppendLog($"Launching backend using '{fileName}' {string.Join(' ', arguments ?? Array.Empty<string>())}");
+        AppendLog($"  File exists: {_diagnostics.FileExists}, Executable: {_diagnostics.IsExecutable}");
 
         try
         {
-            var startInfo = new ProcessStartInfo(fileName)
+            var startInfo = new ProcessStartInfo(fileName!)
             {
                 WorkingDirectory = _runtimeRoot,
                 RedirectStandardOutput = true,
@@ -221,7 +363,7 @@ internal sealed class ServerProcessManager : IDisposable
                 CreateNoWindow = true
             };
 
-            foreach (var arg in arguments)
+            foreach (var arg in arguments ?? Array.Empty<string>())
             {
                 startInfo.ArgumentList.Add(arg);
             }
@@ -230,9 +372,14 @@ internal sealed class ServerProcessManager : IDisposable
             if (_process is null)
             {
                 message = $"Failed to start backend process using '{fileName}'.";
+                _diagnostics.StartupErrorMessage = message;
+                _diagnostics.ProcessStarted = false;
                 AppendLog(message);
                 return false;
             }
+
+            _diagnostics.ProcessStarted = true;
+            _diagnostics.ProcessId = _process.Id;
 
             _process.OutputDataReceived += (_, e) =>
             {
@@ -240,6 +387,7 @@ internal sealed class ServerProcessManager : IDisposable
                 {
                     Console.WriteLine(e.Data);
                     AppendLog(e.Data);
+                    _outputBuffer.Append(e.Data);
                 }
             };
 
@@ -248,7 +396,9 @@ internal sealed class ServerProcessManager : IDisposable
                 if (!string.IsNullOrWhiteSpace(e.Data))
                 {
                     Console.Error.WriteLine(e.Data);
-                    AppendLog("[stderr] " + e.Data);
+                    var errorLine = "[stderr] " + e.Data;
+                    AppendLog(errorLine);
+                    _outputBuffer.Append(errorLine);
                 }
             };
 
@@ -261,9 +411,55 @@ internal sealed class ServerProcessManager : IDisposable
         catch (Exception ex)
         {
             message = $"Backend failed: {ex.Message}";
+            _diagnostics.StartupErrorMessage = message;
+            _diagnostics.ProcessStarted = false;
             AppendLog(message);
             return false;
         }
+    }
+
+    private static bool IsSystemCommand(string fileName)
+    {
+        // Check if this is a system command like 'dotnet'
+        var command = Path.GetFileName(fileName);
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            return false;
+        }
+
+        try
+        {
+            // Try to find the command in PATH
+            var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+            var separator = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ';' : ':';
+            var paths = pathEnv.Split(separator);
+            
+            foreach (var path in paths)
+            {
+                if (string.IsNullOrWhiteSpace(path)) continue;
+                
+                var fullPath = Path.Combine(path, command);
+                if (File.Exists(fullPath))
+                {
+                    return true;
+                }
+                
+                // On Windows, also check with .exe extension
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    if (File.Exists(fullPath + ".exe"))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors in PATH lookup
+        }
+
+        return false;
     }
 
     public void Dispose()

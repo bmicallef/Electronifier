@@ -110,15 +110,43 @@
                             Command="{Binding CreateProjectCommand}" />
                 </StackPanel>
             </Grid>
-            <TextBlock Foreground="{DynamicResource PrimaryBrush}"
-                       FontSize="13"
-                       FontWeight="SemiBold"
-                       Margin="0,0,0,8"
-                       Cursor="Hand"
-                       TextDecorations="Underline"
-                       PointerPressed="OnShowCompileGuidance">
-                How to compile your application.
-            </TextBlock>
+            <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,0,0,8">
+                <TextBlock Foreground="{DynamicResource PrimaryBrush}"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Cursor="Hand"
+                           TextDecorations="Underline"
+                           PointerPressed="OnShowCompileGuidance">
+                    How to compile your application.
+                </TextBlock>
+                <TextBlock Foreground="{DynamicResource TextSecondaryBrush}"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Cursor="Hand"
+                           TextDecorations="Underline"
+                           PointerPressed="OnToggleSystemStatus">
+                    System status.
+                </TextBlock>
+            </StackPanel>
+            <Border Background="{DynamicResource SurfaceBrush}" 
+                    CornerRadius="8" 
+                    Padding="12" 
+                    Margin="0,0,0,8"
+                    IsVisible="{Binding IsSystemStatusVisible}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Publish Requirements Status" FontWeight="SemiBold" FontSize="14" />
+                    <TextBox Text="{Binding SystemStatusDiagnostic}"
+                             FontFamily="Consolas, Menlo, monospace"
+                             FontSize="12"
+                             Foreground="{DynamicResource TextPrimaryBrush}"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             IsReadOnly="True"
+                             TextWrapping="Wrap"
+                             AcceptsReturn="True"
+                             Padding="0" />
+                </StackPanel>
+            </Border>
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <ItemsControl ItemsSource="{Binding Projects}">
                         <ItemsControl.ItemTemplate>

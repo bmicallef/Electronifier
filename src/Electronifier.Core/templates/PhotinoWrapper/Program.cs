@@ -32,6 +32,8 @@ internal static class Program
             var entryUrl = serverManager.GetEntryUrl();
             if (!string.IsNullOrWhiteSpace(entryUrl))
             {
+                // Check if port is already in use before cleanup (for diagnostics)
+                serverManager.CheckInitialPortStatus(entryUrl);
                 serverManager.KillProcessesUsingPort(entryUrl);
             }
             
@@ -66,7 +68,8 @@ internal static class Program
             if (!portReady)
             {
                 LogSink.Append($"Backend port did not become available; showing fallback page.");
-                var fallbackHtml = BuildFallbackHtml(launch, backendStarted, "Backend server did not respond within the timeout period.");
+                var diagnostics = serverManager.GetDiagnostics();
+                var fallbackHtml = BuildFallbackHtml(launch, backendStarted, "Backend server did not respond within the timeout period.", diagnostics);
                 window.LoadRawString(fallbackHtml);
             }
             else
@@ -117,7 +120,7 @@ internal static class Program
         return window;
     }
 
-    private static string BuildFallbackHtml(LaunchConfig launch, bool backendStarted, string? backendMessage)
+    private static string BuildFallbackHtml(LaunchConfig launch, bool backendStarted, string? backendMessage, DiagnosticInfo? diagnostics = null)
     {
         var sb = new StringBuilder();
         sb.Append("""
@@ -146,7 +149,7 @@ internal static class Program
                         padding: 32px;
                     }
                     .card {
-                        max-width: 720px;
+                        max-width: 800px;
                         width: 100%;
                         background: rgba(255, 255, 255, 0.04);
                         border: 1px solid rgba(255, 255, 255, 0.08);
@@ -159,6 +162,13 @@ internal static class Program
                         margin: 0 0 12px 0;
                         font-size: 28px;
                         letter-spacing: 0.5px;
+                    }
+                    h2 {
+                        margin: 24px 0 12px 0;
+                        font-size: 18px;
+                        color: #a0a5c0;
+                        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                        padding-bottom: 8px;
                     }
                     p {
                         margin: 0 0 10px 0;
@@ -192,6 +202,74 @@ internal static class Program
                     .muted {
                         color: #9aa0b5;
                         font-size: 14px;
+                    }
+                    .debug-section {
+                        margin-top: 20px;
+                        padding: 16px;
+                        background: rgba(0, 0, 0, 0.3);
+                        border-radius: 12px;
+                        border: 1px solid rgba(255, 255, 255, 0.06);
+                    }
+                    .debug-row {
+                        display: flex;
+                        align-items: flex-start;
+                        gap: 12px;
+                        padding: 6px 0;
+                        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+                    }
+                    .debug-row:last-child {
+                        border-bottom: none;
+                    }
+                    .debug-label {
+                        min-width: 160px;
+                        color: #9aa0b5;
+                        font-size: 13px;
+                    }
+                    .debug-value {
+                        flex: 1;
+                        font-size: 13px;
+                        word-break: break-all;
+                    }
+                    .debug-value.ok {
+                        color: #8ad879;
+                    }
+                    .debug-value.fail {
+                        color: #ffa4b6;
+                    }
+                    .debug-value.warn {
+                        color: #ffde7d;
+                    }
+                    .output-box {
+                        margin-top: 12px;
+                        padding: 12px;
+                        background: rgba(0, 0, 0, 0.4);
+                        border-radius: 8px;
+                        font-family: "SF Mono", "Monaco", "Consolas", monospace;
+                        font-size: 12px;
+                        max-height: 200px;
+                        overflow-y: auto;
+                        white-space: pre-wrap;
+                        word-break: break-all;
+                        color: #b0b5c5;
+                    }
+                    .output-line {
+                        padding: 2px 0;
+                    }
+                    .output-line.stderr {
+                        color: #ffa4b6;
+                    }
+                    .toggle-btn {
+                        background: rgba(255, 255, 255, 0.08);
+                        border: 1px solid rgba(255, 255, 255, 0.12);
+                        color: #a0a5c0;
+                        padding: 8px 14px;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        font-size: 13px;
+                        margin-top: 16px;
+                    }
+                    .toggle-btn:hover {
+                        background: rgba(255, 255, 255, 0.12);
                     }
                 </style>
             </head>
@@ -229,8 +307,88 @@ internal static class Program
         if (!string.IsNullOrWhiteSpace(backendMessage))
         {
             sb.Append(CultureInfo.InvariantCulture, $"""
-                    <p class="muted">{backendMessage}</p>
+                    <p class="muted">{EscapeHtml(backendMessage)}</p>
             """);
+        }
+
+        // Add detailed diagnostics section
+        if (diagnostics is not null)
+        {
+            sb.Append("""
+                    <h2>🔍 Debug Details</h2>
+                    <div class="debug-section">
+            """);
+
+            // Runtime folder status
+            AppendDebugRow(sb, "Runtime folder", diagnostics.RuntimeRootPath ?? "(not set)", diagnostics.RuntimeRootExists);
+            
+            // Command resolution
+            AppendDebugRow(sb, "Command resolved", diagnostics.CommandResolved ? "Yes" : "No", diagnostics.CommandResolved);
+            
+            if (!string.IsNullOrWhiteSpace(diagnostics.CommandPath))
+            {
+                AppendDebugRow(sb, "Command path", diagnostics.CommandPath, null);
+            }
+            
+            if (!string.IsNullOrWhiteSpace(diagnostics.CommandArguments))
+            {
+                AppendDebugRow(sb, "Arguments", diagnostics.CommandArguments, null);
+            }
+            
+            // File status
+            if (diagnostics.CommandResolved)
+            {
+                AppendDebugRow(sb, "File exists", diagnostics.FileExists ? "Yes" : "No", diagnostics.FileExists);
+                AppendDebugRow(sb, "Is executable", diagnostics.IsExecutable ? "Yes" : "No (check permissions)", diagnostics.IsExecutable);
+            }
+            
+            // Port status
+            if (diagnostics.PortNumber.HasValue)
+            {
+                var portStatus = diagnostics.PortInUseBeforeStart ? "In use before start" : "Available";
+                AppendDebugRow(sb, $"Port {diagnostics.PortNumber}", portStatus, !diagnostics.PortInUseBeforeStart);
+            }
+            
+            // Process status
+            AppendDebugRow(sb, "Process started", diagnostics.ProcessStarted ? "Yes" : "No", diagnostics.ProcessStarted);
+            
+            if (diagnostics.ProcessId.HasValue)
+            {
+                AppendDebugRow(sb, "Process ID", diagnostics.ProcessId.Value.ToString(), null);
+            }
+            
+            if (diagnostics.ProcessExitedEarly)
+            {
+                AppendDebugRow(sb, "Process exited early", $"Yes (exit code: {diagnostics.ProcessExitCode ?? -1})", false);
+            }
+            
+            if (!string.IsNullOrWhiteSpace(diagnostics.StartupErrorMessage))
+            {
+                AppendDebugRow(sb, "Error message", diagnostics.StartupErrorMessage, false);
+            }
+
+            sb.Append("""
+                    </div>
+            """);
+
+            // Recent output section
+            if (diagnostics.RecentOutput.Count > 0)
+            {
+                sb.Append("""
+                    <h2>📋 Recent Output</h2>
+                    <div class="output-box">
+                """);
+                
+                foreach (var line in diagnostics.RecentOutput.TakeLast(20))
+                {
+                    var lineClass = line.StartsWith("[stderr]") ? "output-line stderr" : "output-line";
+                    sb.Append(CultureInfo.InvariantCulture, $"<div class=\"{lineClass}\">{EscapeHtml(line)}</div>");
+                }
+                
+                sb.Append("""
+                    </div>
+                """);
+            }
         }
 
         sb.Append("""
@@ -240,6 +398,37 @@ internal static class Program
         """);
 
         return sb.ToString();
+    }
+
+    private static void AppendDebugRow(StringBuilder sb, string label, string value, bool? isOk)
+    {
+        var valueClass = isOk switch
+        {
+            true => "debug-value ok",
+            false => "debug-value fail",
+            null => "debug-value"
+        };
+        
+        sb.Append(CultureInfo.InvariantCulture, $"""
+                        <div class="debug-row">
+                            <span class="debug-label">{EscapeHtml(label)}</span>
+                            <span class="{valueClass}">{EscapeHtml(value)}</span>
+                        </div>
+        """);
+    }
+
+    private static string EscapeHtml(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return string.Empty;
+        }
+        
+        return text
+            .Replace("&", "&amp;")
+            .Replace("<", "&lt;")
+            .Replace(">", "&gt;")
+            .Replace("\"", "&quot;");
     }
 }
 

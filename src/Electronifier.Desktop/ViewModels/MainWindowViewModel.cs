@@ -68,6 +68,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private readonly List<PublicationDestinationViewModel> _trackedDestinations = new();
     private readonly PropertyChangedEventHandler _destinationPropertyChangedHandler;
     private PropertyChangedEventHandler? _launchOptionsPropertyChangedHandler;
+    private bool _isSystemStatusVisible;
     // private string _publishButtonDisabledReason = string.Empty; // This line was removed as it's a duplicate of the one above the new fields.
 
     public MainWindowViewModel()
@@ -296,6 +297,72 @@ public sealed class MainWindowViewModel : ViewModelBase
         private set => SetProperty(ref _publishButtonDisabledReason, value);
     }
 
+    public bool IsSystemStatusVisible
+    {
+        get => _isSystemStatusVisible;
+        set => SetProperty(ref _isSystemStatusVisible, value);
+    }
+
+    public string SystemStatusDiagnostic
+    {
+        get
+        {
+            var lines = new List<string>();
+            
+            // Stage check
+            var stageOk = IsProjectsStage;
+            lines.Add($"{(stageOk ? "✓" : "✗")} Application Stage: {Stage} {(stageOk ? "" : "(must be Projects)")}");
+            
+            // Dependencies check
+            var depsOk = !HasMissingDependencies;
+            lines.Add($"{(depsOk ? "✓" : "✗")} Dependencies: {(depsOk ? "All present" : "Missing required dependencies")}");
+            
+            // Cooldown check
+            var cooldownOk = (DateTime.Now - _lastPublishClickTime).TotalSeconds >= 10;
+            lines.Add($"{(cooldownOk ? "✓" : "✗")} Publish Cooldown: {(cooldownOk ? "Ready" : $"Wait {(int)(10 - (DateTime.Now - _lastPublishClickTime).TotalSeconds)}s")}");
+            
+            // Releasing check
+            var notReleasing = !IsReleasing;
+            lines.Add($"{(notReleasing ? "✓" : "✗")} Release Status: {(notReleasing ? "Idle" : "Release in progress")}");
+            
+            // Per-project checks
+            lines.Add("");
+            lines.Add("Per-Project Status:");
+            foreach (var project in Projects)
+            {
+                var projectLines = new List<string>();
+                projectLines.Add($"  [{project.Name}]");
+                
+                var hasBinPath = HasAnyBinPath(project);
+                projectLines.Add($"    {(hasBinPath ? "✓" : "✗")} Bin Paths: {(hasBinPath ? "Configured" : "No bin paths set")}");
+                
+                // Detailed publication target info
+                var hasTarget = GetPublicationTarget(project) is not null;
+                var targetDetail = GetPublicationTargetDetail(project);
+                projectLines.Add($"    {(hasTarget ? "✓" : "✗")} Publication Target: {targetDetail}");
+                
+                var notPublishing = !_projectsCurrentlyPublishing.Contains(project.Name);
+                projectLines.Add($"    {(notPublishing ? "✓" : "✗")} Publish State: {(notPublishing ? "Ready" : "Currently publishing")}");
+                
+                var allOk = hasBinPath && hasTarget && notPublishing;
+                projectLines[0] = $"  {(allOk ? "✓" : "✗")} [{project.Name}]";
+                
+                lines.AddRange(projectLines);
+            }
+            
+            return string.Join(Environment.NewLine, lines);
+        }
+    }
+
+    public void ToggleSystemStatus()
+    {
+        IsSystemStatusVisible = !IsSystemStatusVisible;
+        if (IsSystemStatusVisible)
+        {
+            OnPropertyChanged(nameof(SystemStatusDiagnostic));
+        }
+    }
+
     private async Task InitializeAsync()
     {
         Stage = ApplicationStage.Splash;
@@ -317,6 +384,7 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         SelectedProject = Projects.FirstOrDefault();
         StatusMessage = $"Loaded {Projects.Count} project(s).";
+        UpdateReleaseCommandState();
     }
 
     private async Task RefreshDependenciesAsync()
@@ -347,6 +415,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         if (!missing.Any())
         {
             Stage = ApplicationStage.Projects;
+            // Defer command refresh to ensure UI has bound items
+            _ = Dispatcher.UIThread.InvokeAsync(() => UpdateReleaseCommandState(), DispatcherPriority.Background);
             return;
         }
 
@@ -357,6 +427,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         if (installed)
         {
             Stage = ApplicationStage.Projects;
+            // Defer command refresh to ensure UI has bound items
+            _ = Dispatcher.UIThread.InvokeAsync(() => UpdateReleaseCommandState(), DispatcherPriority.Background);
         }
     }
 
@@ -571,100 +643,127 @@ public sealed class MainWindowViewModel : ViewModelBase
     private async Task RunReleaseWorkflowAsync()
     {
         LogPublishActivity("RunReleaseWorkflowAsync invoked.");
-        if (!CanCreateRelease())
-        {
-            LogPublishActivity("RunReleaseWorkflowAsync aborted: prerequisites not satisfied.");
-            StatusMessage = "Resolve dependencies and select a project before creating a release.";
-            ActiveReleaseProject = null;
-            return;
-        }
-
-        ReleaseSucceeded = false;
-
-        var project = SelectedProject;
-        if (project is null)
-        {
-            LogPublishActivity("Release workflow aborted: SelectedProject is null.");
-            StatusMessage = "Select a project before creating a release.";
-            ActiveReleaseProject = null;
-            return;
-        }
-
-        var target = GetPublicationTarget(project);
-        if (target is null)
-        {
-            LogPublishActivity($"Release workflow aborted: No publication target configured for '{project.Name}'.");
-            StatusMessage = "Configure a publication destination before releasing.";
-            ActiveReleaseProject = null;
-            return;
-        }
-
-        if (!HasAnyBinPath(project))
-        {
-            LogPublishActivity($"Release workflow aborted: Missing platform bin paths for '{project.Name}'.");
-            StatusMessage = "Provide a bin folder for at least one platform before releasing.";
-            ActiveReleaseProject = null;
-            return;
-        }
-
-        IsReleasing = true;
-        ReleaseStatusMessage = "Starting release workflow...";
-        ReleaseProgress = 0;
-        var progressReporter = new Progress<ReleaseAutomationProgress>(progress =>
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                ReleaseStatusMessage = progress.Message;
-                ReleaseProgress = progress.Percentage;
-            });
-        });
-        StatusMessage = $"Building release for \"{project.Name}\"...";
-        LogPublishActivity($"Building release payload for '{project.Name}'.");
+        
+        // Capture the project name at the start for cleanup
+        var projectName = SelectedProject?.Name;
+        
         try
         {
-            var release = BuildRelease(project, target.Model);
-            ReleaseSucceeded = false;
-            LogPublishActivity($"Calling ReleaseAutomationService.PublishAsync for '{project.Name}'.");
-            var result = await _releaseAutomationService.PublishAsync(project.Model, release, project.LaunchOptions.Model, progressReporter).ConfigureAwait(false);
-            if (result.Success)
+            if (!CanCreateRelease())
             {
-                    project.Model.Releases.Add(release);
-                    project.NotifyReleaseCountChanged();
-                    project.NotifyReleaseMetadataChanged();
-                    await SaveStateAsync().ConfigureAwait(false);
-                    StatusMessage = $"Release succeeded: {result.Message}";
-                    ReleaseStatusMessage = $"Release completed: {result.Message}";
-                    ReleaseProgress = 1;
-                    ReleaseSucceeded = true;
-                    LogPublishActivity($"PublishAsync succeeded for '{project.Name}': {result.Message}");
-                }
-                else
-                {
-                    LogPublishActivity($"PublishAsync reported failure for '{project.Name}': {result.Message}");
-                    StatusMessage = $"Release failed: {result.Message}";
-                    ReleaseStatusMessage = $"Release failed: {result.Message}";
-                    ReleaseSucceeded = false;
-                }
-        }
-        catch (Exception ex)
-        {
-            LogPublishActivity($"RunReleaseWorkflowAsync exception: {ex}");
-            StatusMessage = $"Release failed: {ex.Message}";
-            ReleaseStatusMessage = $"Release failed: {ex.Message}";
+                LogPublishActivity("RunReleaseWorkflowAsync aborted: prerequisites not satisfied.");
+                StatusMessage = "Resolve dependencies and select a project before creating a release.";
+                ActiveReleaseProject = null;
+                return;
+            }
+
             ReleaseSucceeded = false;
+
+            var project = SelectedProject;
+            if (project is null)
+            {
+                LogPublishActivity("Release workflow aborted: SelectedProject is null.");
+                StatusMessage = "Select a project before creating a release.";
+                ActiveReleaseProject = null;
+                return;
+            }
+
+            var target = GetPublicationTarget(project);
+            if (target is null)
+            {
+                LogPublishActivity($"Release workflow aborted: No publication target configured for '{project.Name}'.");
+                StatusMessage = "Configure a publication destination before releasing.";
+                ActiveReleaseProject = null;
+                return;
+            }
+
+            if (!HasAnyBinPath(project))
+            {
+                LogPublishActivity($"Release workflow aborted: Missing platform bin paths for '{project.Name}'.");
+                StatusMessage = "Provide a bin folder for at least one platform before releasing.";
+                ActiveReleaseProject = null;
+                return;
+            }
+
+            IsReleasing = true;
+            ReleaseStatusMessage = "Starting release workflow...";
+            ReleaseProgress = 0;
+            var progressReporter = new Progress<ReleaseAutomationProgress>(progress =>
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    ReleaseStatusMessage = progress.Message;
+                    ReleaseProgress = progress.Percentage;
+                });
+            });
+            StatusMessage = $"Building release for \"{project.Name}\"...";
+            LogPublishActivity($"Building release payload for '{project.Name}'.");
+            try
+            {
+                var release = BuildRelease(project, target.Model);
+                ReleaseSucceeded = false;
+                LogPublishActivity($"Calling ReleaseAutomationService.PublishAsync for '{project.Name}'.");
+                var result = await _releaseAutomationService.PublishAsync(project.Model, release, project.LaunchOptions.Model, progressReporter).ConfigureAwait(false);
+                if (result.Success)
+                {
+                        project.Model.Releases.Add(release);
+                        project.NotifyReleaseCountChanged();
+                        project.NotifyReleaseMetadataChanged();
+                        await SaveStateAsync().ConfigureAwait(false);
+                        StatusMessage = $"Release succeeded: {result.Message}";
+                        ReleaseStatusMessage = $"Release completed: {result.Message}";
+                        ReleaseProgress = 1;
+                        ReleaseSucceeded = true;
+                        LogPublishActivity($"PublishAsync succeeded for '{project.Name}': {result.Message}");
+                    }
+                    else
+                    {
+                        LogPublishActivity($"PublishAsync reported failure for '{project.Name}': {result.Message}");
+                        StatusMessage = $"Release failed: {result.Message}";
+                        ReleaseStatusMessage = $"Release failed: {result.Message}";
+                        ReleaseSucceeded = false;
+                    }
+            }
+            catch (Exception ex)
+            {
+                LogPublishActivity($"RunReleaseWorkflowAsync exception: {ex}");
+                StatusMessage = $"Release failed: {ex.Message}";
+                ReleaseStatusMessage = $"Release failed: {ex.Message}";
+                ReleaseSucceeded = false;
+            }
         }
         finally
         {
+            // Always clean up - this runs on ALL code paths including early returns
             IsReleasing = false;
             
-            // Remove project from currently publishing set
-            if (project != null)
+            // Remove project from currently publishing set using the captured name
+            if (!string.IsNullOrEmpty(projectName))
             {
-                _projectsCurrentlyPublishing.Remove(project.Name);
+                _projectsCurrentlyPublishing.Remove(projectName);
             }
             
+            // Also try to remove using SelectedProject in case name changed
+            if (SelectedProject != null)
+            {
+                _projectsCurrentlyPublishing.Remove(SelectedProject.Name);
+            }
+            
+            // Reset the cooldown timer since publish is complete
+            _publishButtonReEnableTimer?.Stop();
+            _publishButtonReEnableTimer = null;
+            _lastPublishClickTime = DateTime.MinValue;
+            
             ActiveReleaseProject = null;
-            _addReleaseCommand.RaiseCanExecuteChanged();
+            
+            // Force UI update on the dispatcher thread
+            Dispatcher.UIThread.Post(() =>
+            {
+                _addReleaseCommand.RaiseCanExecuteChanged();
+                OnPropertyChanged(nameof(SystemStatusDiagnostic));
+            });
+            
+            LogPublishActivity($"RunReleaseWorkflowAsync cleanup complete. _projectsCurrentlyPublishing count: {_projectsCurrentlyPublishing.Count}");
         }
     }
 
@@ -821,6 +920,53 @@ public sealed class MainWindowViewModel : ViewModelBase
             return project.PublicationTargets.FirstOrDefault(target =>
                 target.IsLocalDirectory && !string.IsNullOrWhiteSpace(target.LocalDirectoryPath));
         }
+    }
+
+    private string GetPublicationTargetDetail(ProjectDefinitionViewModel? project)
+    {
+        if (project?.PublicationTargets is null || project.PublicationTargets.Count == 0)
+        {
+            return "No targets configured";
+        }
+
+        var details = new List<string>();
+        foreach (var target in project.PublicationTargets)
+        {
+            if (target.Type == null)
+            {
+                details.Add("Type not selected");
+            }
+            else if (target.IsLocalDirectory)
+            {
+                if (string.IsNullOrWhiteSpace(target.LocalDirectoryPath))
+                {
+                    details.Add("Local: missing path");
+                }
+                else
+                {
+                    details.Add($"Local: {target.LocalDirectoryPath}");
+                }
+            }
+            else if (target.IsGitHubRelease)
+            {
+                var missing = new List<string>();
+                if (string.IsNullOrWhiteSpace(target.GitHubRepositoryUrl))
+                    missing.Add("URL");
+                if (string.IsNullOrWhiteSpace(target.GitHubAccessToken))
+                    missing.Add("token");
+                
+                if (missing.Count > 0)
+                {
+                    details.Add($"GitHub: missing {string.Join(" & ", missing)}");
+                }
+                else
+                {
+                    details.Add($"GitHub: {target.GitHubRepositoryUrl}");
+                }
+            }
+        }
+
+        return details.Count > 0 ? string.Join("; ", details) : "Unknown";
     }
 
     private void StartCreatingProject()

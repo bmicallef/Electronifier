@@ -315,4 +315,12 @@ public partial class MainWindow : Window
 
         await guidanceWindow.ShowDialog(this);
     }
+
+    private void OnToggleSystemStatus(object? sender, Avalonia.Input.PointerPressedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.ToggleSystemStatus();
+        }
+    }
 }

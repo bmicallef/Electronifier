@@ -413,13 +413,27 @@ public sealed class ReleaseAutomationService
         }
 
         var iconFile = Directory.EnumerateFiles(Path.Combine(tempRoot, "icons")).FirstOrDefault();
+        string? finalIconName = null;
         if (iconFile is not null)
         {
-            var destIcon = Path.Combine(resourcesRoot, Path.GetFileName(iconFile));
-            File.Copy(iconFile, destIcon, true);
+            try
+            {
+                var icnsPath = await GenerateMacIcons(iconFile, tempRoot, cancellationToken).ConfigureAwait(false);
+                var destIcon = Path.Combine(resourcesRoot, Path.GetFileName(icnsPath));
+                File.Copy(icnsPath, destIcon, true);
+                finalIconName = Path.GetFileName(icnsPath);
+            }
+            catch (Exception ex)
+            {
+                // Fallback to simple copy if generation fails
+                progress?.Report(new ReleaseAutomationProgress($"Warning: Failed to generate .icns file ({ex.Message}). Falling back to PNG.", 0));
+                var destIcon = Path.Combine(resourcesRoot, Path.GetFileName(iconFile));
+                File.Copy(iconFile, destIcon, true);
+                finalIconName = Path.GetFileName(iconFile);
+            }
         }
 
-        WriteMacInfoPlist(contentsRoot, project, release, launcherName, iconFile);
+        WriteMacInfoPlist(contentsRoot, project, release, launcherName, finalIconName);
 
         // Stage the .app inside a folder so the DMG contains the bundle
         var dmgStaging = Path.Combine(tempRoot, "dmg-staging");
@@ -456,6 +470,51 @@ public sealed class ReleaseAutomationService
         }
 
         return bundleZip;
+    }
+
+    private static async Task<string> GenerateMacIcons(string sourceIconPath, string tempRoot, CancellationToken cancellationToken)
+    {
+        var iconSetDir = Path.Combine(tempRoot, "icons.iconset");
+        if (Directory.Exists(iconSetDir))
+        {
+            Directory.Delete(iconSetDir, true);
+        }
+        Directory.CreateDirectory(iconSetDir);
+
+        // Define required sizes for .icns
+        var sizes = new[]
+        {
+            (16, "icon_16x16.png"),
+            (32, "icon_16x16@2x.png"),
+            (32, "icon_32x32.png"),
+            (64, "icon_32x32@2x.png"),
+            (128, "icon_128x128.png"),
+            (256, "icon_128x128@2x.png"),
+            (256, "icon_256x256.png"),
+            (512, "icon_256x256@2x.png"),
+            (512, "icon_512x512.png"),
+            (1024, "icon_512x512@2x.png")
+        };
+
+        foreach (var (size, name) in sizes)
+        {
+            var destPath = Path.Combine(iconSetDir, name);
+            var result = await RunProcessAsync("sips", new[] { "-z", size.ToString(), size.ToString(), sourceIconPath, "--out", destPath }, tempRoot, cancellationToken).ConfigureAwait(false);
+            if (!result.Success)
+            {
+                throw new InvalidOperationException($"Failed to resize icon to {size}x{size}: {result.Output}");
+            }
+        }
+
+        var icnsPath = Path.Combine(tempRoot, "appicon.icns");
+        var iconUtilResult = await RunProcessAsync("iconutil", new[] { "-c", "icns", iconSetDir, "-o", icnsPath }, tempRoot, cancellationToken).ConfigureAwait(false);
+
+        if (!iconUtilResult.Success)
+        {
+             throw new InvalidOperationException($"Failed to create .icns file: {iconUtilResult.Output}");
+        }
+
+        return icnsPath;
     }
 
     private static void TryMarkExecutable(string path)
